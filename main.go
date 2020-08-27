@@ -3,6 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -35,53 +39,115 @@ func main() {
 		return
 	}
 
-	//dest := flag.Args()[0]
+	dest := flag.Args()[0]
 	sources := flag.Args()[1:]
 
 	//log.Println(input)
 	//log.Println(sources)
 
-	//destDesc := discoverTileset(dest)
+	// XXX check if input and output are both RGBA
+	// XXX check all tiles resoltuions to match
+	// XXX actually support more than 1 input and 1 output file
+
+	destDesc := discoverTileset(dest)
 	sourcesDesc := make([]TilesetDescriptor, len(sources))
 	for idx, source := range sources {
 		sourcesDesc[idx] = discoverTileset(source)
 	}
 
 	source := sourcesDesc[0]
-	for z := source.minZ; z < source.maxZ; z++ {
-		zBasePath := fmt.Sprintf("%s/%d/", source.basePath, z)
+	for z := source.minZ; z <= source.maxZ; z++ {
+		zPart := fmt.Sprintf("/%d/", z)
+		zBasePath := source.basePath + zPart
 		log.Printf("Entering z=%s\n", zBasePath)
 		xDirs, err := ioutil.ReadDir(zBasePath)
 		if err != nil {
-			log.Fatal(err)
-			return
+			panic(err)
 		}
 		for _, x := range xDirs {
 			if x.IsDir() {
 				xNum, err := strconv.Atoi(x.Name())
 				if err != nil {
-					fmt.Println(err)
-					return
+					panic(err)
 				}
-				xBasePath := fmt.Sprintf("%s%d/", zBasePath, xNum)
+				xPart := fmt.Sprintf("%s%d/", zPart, xNum)
+				xBasePath := source.basePath + xPart
 				log.Printf("Entering x=%s\n", xBasePath)
 				yFiles, err := ioutil.ReadDir(xBasePath)
 				if err != nil {
-					log.Fatal(err)
-					break
+					panic(err)
 				}
 				for _, y := range yFiles {
-					processInputTile(xBasePath + y.Name())
+					processInputTile(source.basePath, destDesc.basePath, xPart+y.Name())
 				}
 			}
 		}
 	}
 }
 
-func processInputTile(relTilePath string) {
-	// XXX read tile, check if it has at least one pixel with alpha
-	// if no, replace target with source and be done.
-	// if yes, read target, do alpha blending and then write back target
+func processInputTile(sourcePath, destPath, relTilePath string) (err error) {
+	f, err := os.Open(sourcePath + relTilePath)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return
+	}
+
+	if hasAlphaPixel(img) {
+		log.Println(destPath + relTilePath)
+		destF, err := os.Open(destPath + relTilePath)
+		if err != nil {
+			panic(err)
+		}
+
+		destImg, _, err := image.Decode(destF)
+		if err != nil {
+			panic(err)
+		}
+		output := image.NewRGBA(image.Rect(0, 0, destImg.Bounds().Max.X, destImg.Bounds().Max.Y))
+		draw.Draw(output, img.Bounds(), img, image.Point{0, 0}, draw.Over)
+		draw.Draw(output, destImg.Bounds(), destImg, image.Point{0, 0}, draw.Over)
+		destF.Close()
+
+		destF, err = os.Create(destPath + relTilePath)
+		if err != nil {
+			panic(err)
+		}
+		err = png.Encode(destF, output)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		// Simply overwrite the destination file completely
+		f.Seek(0, io.SeekStart)
+		outfile, err := os.Create(destPath + relTilePath)
+		defer outfile.Close()
+		if err != nil {
+			panic(err)
+		}
+		_, err = outfile.ReadFrom(f)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	return nil
+}
+
+func hasAlphaPixel(img image.Image) (hasAlpha bool) {
+	for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
+		for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
+			_, _, _, a := img.At(x, y).RGBA()
+			if a != 255 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type TilesetDescriptor struct {
@@ -90,7 +156,6 @@ type TilesetDescriptor struct {
 	basePath string
 }
 
-// Read
 func discoverTileset(path string) TilesetDescriptor {
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
