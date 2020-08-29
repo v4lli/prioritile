@@ -12,9 +12,9 @@ type TilesetDescriptor struct {
 }
 
 func discoverTileset(backend StorageBackend) TilesetDescriptor {
-	files, err := backend.ReadDir(backend.GetBasePath())
+	files, err := backend.GetDirectories(backend.GetBasePath())
 	if err != nil {
-		// XXX inconsistent
+		// XXX inconsistent, should return err
 		panic(err)
 	}
 
