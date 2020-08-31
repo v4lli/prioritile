@@ -1,16 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/schollz/progressbar/v3"
 	"image"
 	"image/draw"
 	"image/png"
-	"io"
 	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 func main() {
@@ -49,8 +52,7 @@ func main() {
 
 		if idx > 0 {
 			if tilesets[0].MaxZ != tilesets[idx].MaxZ || tilesets[0].MinZ != tilesets[idx].MinZ {
-				log.Fatalf("Zoom level mismatch between target %s and %s", tilesets[0].Backend.GetBasePath(),
-					tilesets[idx].Backend.GetBasePath())
+				log.Fatalf("Zoom level mismatch for target %s\n", pathSpec)
 			}
 		}
 	}
@@ -71,10 +73,8 @@ func main() {
 		bar = progressbar.Default(1)
 	}
 	for z := source.MinZ; z <= source.MaxZ; z++ {
-		zPart := fmt.Sprintf("/%d/", z)
-		zBasePath := source.Backend.GetBasePath() + zPart
-		//log.Printf("Entering z=%s\n", zBasePath)
-		xDirs, err := source.Backend.GetDirectories(zBasePath)
+		zPart := fmt.Sprintf("%d/", z)
+		xDirs, err := source.Backend.GetDirectories(zPart)
 		if err != nil {
 			panic(err)
 		}
@@ -85,9 +85,7 @@ func main() {
 				panic(err)
 			}
 			xPart := fmt.Sprintf("%s%d/", zPart, xNum)
-			xBasePath := source.Backend.GetBasePath() + xPart
-			//log.Printf("Entering x=%s\n", xBasePath)
-			yFiles, err := source.Backend.GetFiles(xBasePath)
+			yFiles, err := source.Backend.GetFiles(xPart)
 			if err != nil {
 				panic(err)
 			}
@@ -95,7 +93,7 @@ func main() {
 				bar.ChangeMax(bar.GetMax() + len(yFiles))
 			}
 			for _, y := range yFiles {
-				if err := source.Backend.MkdirAll(dest.Backend.GetBasePath() + xPart); err != nil {
+				if err := dest.Backend.MkdirAll(xPart); err != nil {
 					log.Fatal(err)
 				}
 				if err := processInputTile(source, dest, xPart+y); err != nil {
@@ -113,13 +111,14 @@ func main() {
 }
 
 func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err error) {
-	f, err := source.Backend.GetFileReader(relTilePath)
+	f, err := source.Backend.GetFile(relTilePath)
 	if err != nil {
 		return
 	}
-
-	img, _, err := image.Decode(f)
+	img, _, err := image.Decode(bytes.NewBuffer(f))
 	if err != nil {
+		log.Println(err.Error())
+		log.Println(f)
 		return
 	}
 
@@ -130,12 +129,11 @@ func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err e
 
 	// if the front image has at least one transparent pixel (and exists), merge front and back
 	if hasAlphaPixel && dest.Backend.FileExists(relTilePath) {
-		destF, err := dest.Backend.GetFileReader(relTilePath)
+		destF, err := dest.Backend.GetFile(relTilePath)
 		if err != nil {
 			return err
 		}
-
-		destImg, _, err := image.Decode(destF)
+		destImg, _, err := image.Decode(bytes.NewBuffer(destF))
 		if err != nil {
 			return err
 		}
@@ -143,25 +141,60 @@ func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err e
 		draw.Draw(merged, destImg.Bounds(), destImg, image.Point{0, 0}, draw.Over)
 		draw.Draw(merged, img.Bounds(), img, image.Point{0, 0}, draw.Over)
 
-		output, err := dest.Backend.GetFileWriter(relTilePath)
-		if err != nil {
+		buf := new(bytes.Buffer)
+		if err = png.Encode(buf, merged); err != nil {
 			return err
 		}
-		err = png.Encode(output, merged)
-		if err != nil {
+		if err = dest.Backend.PutFile(relTilePath, buf); err != nil {
 			return err
 		}
 	} else {
 		// if the front tile completely occludes the back tile, just replace it
-		output, err := dest.Backend.GetFileWriter(relTilePath)
-		if err != nil {
-			return err
-		}
-		_, err = io.Copy(output, f)
-		if err != nil {
+		if err = dest.Backend.PutFile(relTilePath, bytes.NewBuffer(f)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func stringToBackend(input string) (StorageBackend, error) {
+	pathSpec := input
+	if pathSpec[len(pathSpec)-1] != '/' {
+		pathSpec = pathSpec + "/"
+	}
+
+	if pathSpec[0:5] == "s3://" {
+		// Extract host & bucket
+		pathComponents := strings.Split(pathSpec[5:], "/")
+
+		minioClient, err := minio.New(pathComponents[0], &minio.Options{
+			Creds:  credentials.NewStaticV4(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), ""),
+			Secure: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &S3Backend{
+			Client:   minioClient,
+			Bucket:   pathComponents[1],
+			BasePath: strings.Join(pathComponents[2:], "/"),
+		}, nil
+	}
+
+	// Default: local filesystem.
+	_, err := os.Stat(pathSpec)
+	if os.IsNotExist(err) {
+		return nil, err
+	}
+	return &FsBackend{BasePath: pathSpec}, nil
+}
+
+type StorageBackend interface {
+	GetDirectories(dirname string) ([]string, error)
+	GetFiles(dirname string) ([]string, error)
+	MkdirAll(dirname string) error
+	GetFile(filename string) ([]byte, error)
+	PutFile(filename string, content *bytes.Buffer) error
+	FileExists(filename string) bool
 }
