@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/schollz/progressbar/v3"
 	"image"
 	"image/draw"
@@ -11,6 +13,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 func main() {
@@ -71,7 +74,7 @@ func main() {
 		bar = progressbar.Default(1)
 	}
 	for z := source.MinZ; z <= source.MaxZ; z++ {
-		zPart := fmt.Sprintf("/%d/", z)
+		zPart := fmt.Sprintf("%d/", z)
 		zBasePath := source.Backend.GetBasePath() + zPart
 		//log.Printf("Entering z=%s\n", zBasePath)
 		xDirs, err := source.Backend.GetDirectories(zBasePath)
@@ -95,7 +98,7 @@ func main() {
 				bar.ChangeMax(bar.GetMax() + len(yFiles))
 			}
 			for _, y := range yFiles {
-				if err := source.Backend.MkdirAll(dest.Backend.GetBasePath() + xPart); err != nil {
+				if err := dest.Backend.MkdirAll(dest.Backend.GetBasePath() + xPart); err != nil {
 					log.Fatal(err)
 				}
 				if err := processInputTile(source, dest, xPart+y); err != nil {
@@ -151,6 +154,7 @@ func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err e
 		if err != nil {
 			return err
 		}
+		output.Close()
 	} else {
 		// if the front tile completely occludes the back tile, just replace it
 		output, err := dest.Backend.GetFileWriter(relTilePath)
@@ -161,7 +165,50 @@ func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err e
 		if err != nil {
 			return err
 		}
+		output.Close()
 	}
 
 	return nil
+}
+
+func stringToBackend(input string) (StorageBackend, error) {
+	if input[0:5] == "s3://" {
+		// Extract host & bucket
+		pathComponents := strings.Split(input[5:], "/")
+
+		minioClient, err := minio.New(pathComponents[0], &minio.Options{
+			Creds:  credentials.NewStaticV4(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), ""),
+			Secure: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &S3Backend{
+			Client:   minioClient,
+			Bucket:   pathComponents[1],
+			BasePath: strings.Join(pathComponents[2:], "/"),
+		}, nil
+	}
+
+	basePath := input
+	if basePath[len(basePath)-1] != '/' {
+		basePath = basePath + "/"
+	}
+
+	_, err := os.Stat(basePath)
+	if os.IsNotExist(err) {
+		return nil, err
+	}
+
+	return &FsBackend{BasePath: basePath}, nil
+}
+
+type StorageBackend interface {
+	GetDirectories(dirname string) ([]string, error)
+	GetFiles(dirname string) ([]string, error)
+	MkdirAll(dirname string) error
+	GetFileReader(filename string) (io.Reader, error)
+	GetFileWriter(filename string) (*io.PipeWriter, error)
+	FileExists(filename string) bool
+	GetBasePath() string
 }

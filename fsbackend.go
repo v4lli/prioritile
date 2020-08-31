@@ -1,38 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 )
-
-func stringToBackend(input string) (StorageBackend, error) {
-	//if input[0:4] == "s3://" {
-	//	panic("S3 backend not implemented yet")
-	//}
-
-	basePath := input
-	if basePath[len(basePath)-1] != '/' {
-		basePath = basePath + "/"
-	}
-
-	_, err := os.Stat(basePath)
-	if os.IsNotExist(err) {
-		return nil, err
-	}
-
-	return &FsBackend{BasePath: basePath}, nil
-}
-
-type StorageBackend interface {
-	GetDirectories(dirname string) ([]string, error)
-	GetFiles(dirname string) ([]string, error)
-	MkdirAll(dirname string) error
-	GetFileReader(filename string) (io.Reader, error)
-	GetFileWriter(filename string) (io.Writer, error)
-	FileExists(filename string) bool
-	GetBasePath() string
-}
 
 type FsBackend struct {
 	BasePath string
@@ -47,13 +21,18 @@ func (b *FsBackend) GetFileReader(filename string) (io.Reader, error) {
 	return f, nil
 }
 
-func (b *FsBackend) GetFileWriter(filename string) (io.Writer, error) {
-	f, err := os.Create(b.BasePath + filename)
-	if err != nil {
-		return nil, err
-	}
-	// XXX not sure if it's a good idea to rely on GC to call close on file...
-	return f, nil
+func (b *FsBackend) GetFileWriter(filename string) (*io.PipeWriter, error) {
+	r, w := io.Pipe()
+	go func() {
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(r)
+		err := ioutil.WriteFile(b.BasePath+filename, buf.Bytes(), 0755)
+		if err != nil {
+			log.Println(err)
+		}
+		// XXX not sure if it's a good idea to rely on GC to call close on file...
+	}()
+	return w, nil
 }
 
 func (b *FsBackend) FileExists(filename string) bool {
