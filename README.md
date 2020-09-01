@@ -4,7 +4,9 @@
 
 prioritile applies a painter-type algorithm in an efficient way by leveraging the XYZ (and WM(T)S) directory structure on local and remote file systems. It is intended to replace complicated and inefficient GDAL VRT chains which are sometimes used to create a "world grids" of e.g. satellite imagery. XYZ/WMS tile directories can be created with e.g. [gdal2tiles](https://gdal.org/programs/gdal2tiles.html) and viewed with any slippy map software (OpenLayers or Leaflet) or GIS Software (e.g. QGIS).
 
-prioritile supports S3 storage backends for both input and output tilesets, as well as mixed configurations.
+prioritile supports S3 storage backends for both input and output tilesets, as well as mixed configurations. prioritile was developed for and is used by [meteocool](https://meteocool.com/).
+
+![Go](https://github.com/v4lli/prioritile/workflows/Go/badge.svg)
 
 ## Limitations
 
