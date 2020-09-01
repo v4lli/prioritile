@@ -28,7 +28,7 @@ func (s *S3Backend) GetFile(filename string) ([]byte, error) {
 }
 
 func (s *S3Backend) PutFile(filename string, content *bytes.Buffer) error {
-	_, err := s.Client.PutObject(context.Background(), s.Bucket, s.BasePath+filename, content, -1,
+	_, err := s.Client.PutObject(context.Background(), s.Bucket, s.BasePath+filename, content, int64(content.Len()),
 		minio.PutObjectOptions{})
 	return err
 }
@@ -64,7 +64,7 @@ func (s *S3Backend) GetFiles(dirname string) ([]string, error) {
 			return nil, object.Err
 		}
 		if object.Key[len(object.Key)-1] != '/' {
-			// chop trailing slash and prefix
+			// chop prefix
 			result = append(result, object.Key[len(prefix):])
 		}
 	}

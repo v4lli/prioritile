@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 func main() {
@@ -40,8 +41,6 @@ func main() {
 		return
 	}
 
-	log.Println(*numWorkers)
-
 	tilesets := make([]TilesetDescriptor, len(flag.Args()))
 	for idx, pathSpec := range flag.Args() {
 		backend, err := stringToBackend(pathSpec)
@@ -60,25 +59,42 @@ func main() {
 	dest := tilesets[0]
 	sources := tilesets[1:]
 
-	//log.Println(input)
-	//log.Println(sources)
-
 	// XXX check if input and output are both RGBA
 	// XXX check all tiles resolutions to match
 	// XXX actually support more than 1 input and 1 output file
 
-	source := sources[0]
-	var bar *progressbar.ProgressBar
-	if !*quiet {
-		bar = progressbar.Default(1)
+	type Job struct {
+		source      TilesetDescriptor
+		dest        TilesetDescriptor
+		relTilePath string
 	}
+
+	var wg sync.WaitGroup
+	jobChan := make(chan Job, 1024)
+	for i := 0; i < *numWorkers; i++ {
+		wg.Add(1)
+		go func(jobChan <-chan Job) {
+			defer wg.Done()
+			for job := range jobChan {
+				if err := processInputTile(job.source, job.dest, job.relTilePath); err != nil {
+					panic(err)
+				}
+			}
+		}(jobChan)
+	}
+
+	source := sources[0]
 	for z := source.MinZ; z <= source.MaxZ; z++ {
 		zPart := fmt.Sprintf("%d/", z)
 		xDirs, err := source.Backend.GetDirectories(zPart)
 		if err != nil {
 			panic(err)
 		}
-		//log.Printf("Zoom level %d/%d", z, source.MaxZ)
+		var bar *progressbar.ProgressBar
+		if !*quiet {
+			log.Printf("Zoom level %d/%d", z, source.MaxZ)
+			bar = progressbar.Default(int64(len(xDirs)))
+		}
 		for _, x := range xDirs {
 			xNum, err := strconv.Atoi(x)
 			if err != nil {
@@ -89,25 +105,23 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			if !*quiet {
-				bar.ChangeMax(bar.GetMax() + len(yFiles))
-			}
 			for _, y := range yFiles {
 				if err := dest.Backend.MkdirAll(xPart); err != nil {
 					log.Fatal(err)
 				}
-				if err := processInputTile(source, dest, xPart+y); err != nil {
-					log.Fatal(err)
+				jobChan <- Job{
+					source:      source,
+					dest:        dest,
+					relTilePath: xPart + y,
 				}
-				if !*quiet {
-					bar.Add(1)
-				}
+			}
+			if !*quiet {
+				bar.Add(1)
 			}
 		}
 	}
-	if !*quiet {
-		bar.Add(1)
-	}
+	close(jobChan)
+	wg.Wait()
 }
 
 func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err error) {
