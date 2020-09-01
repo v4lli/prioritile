@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/schollz/progressbar/v3"
 	"image"
 	"image/draw"
 	"image/png"
@@ -15,6 +12,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/schollz/progressbar/v3"
 )
 
 func main() {
@@ -178,7 +179,7 @@ func stringToBackend(input string) (StorageBackend, error) {
 		pathSpec = pathSpec + "/"
 	}
 
-	if pathSpec[0:5] == "s3://" {
+	if strings.HasPrefix(pathSpec, "s3://") {
 		// Extract host & bucket
 		pathComponents := strings.Split(pathSpec[5:], "/")
 
