@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 )
@@ -11,21 +12,42 @@ type TilesetDescriptor struct {
 	Backend StorageBackend
 }
 
-func discoverTileset(backend StorageBackend) TilesetDescriptor {
+func discoverTilesets(paths []string) ([]TilesetDescriptor, error) {
+	tilesets := make([]TilesetDescriptor, len(paths))
+	for i, path := range paths {
+		backend, err := stringToBackend(path)
+		if err != nil {
+			return nil, err
+		}
+
+		tilesets[i], err = discoverTileset(backend)
+		if err != nil {
+			return nil, fmt.Errorf("could not discover tileset: %v", err)
+		}
+
+		if i > 0 && (tilesets[0].MaxZ != tilesets[i].MaxZ || tilesets[0].MinZ != tilesets[i].MinZ) {
+			return nil, fmt.Errorf("Zoom level mismatch for target %s", path)
+		}
+	}
+	return tilesets, nil
+}
+
+func discoverTileset(backend StorageBackend) (TilesetDescriptor, error) {
 	files, err := backend.GetDirectories("")
 	if err != nil {
-		// XXX inconsistent, should return err
-		panic(err)
+		return TilesetDescriptor{}, err
 	}
 
 	var z []int
 	for _, f := range files {
-		if i, err := strconv.Atoi(f); err == nil {
-			z = append(z, i)
+		i, err := strconv.Atoi(f)
+		if err != nil {
+			return TilesetDescriptor{}, err
 		}
+		z = append(z, i)
 	}
 	if z == nil {
-		panic("Invalid or empty tileset")
+		return TilesetDescriptor{}, fmt.Errorf("invalid or empty tileset")
 	}
 	sort.Ints(z)
 
@@ -33,5 +55,5 @@ func discoverTileset(backend StorageBackend) TilesetDescriptor {
 		MinZ:    z[0],
 		MaxZ:    z[len(z)-1],
 		Backend: backend,
-	}
+	}, nil
 }

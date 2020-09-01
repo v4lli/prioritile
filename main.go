@@ -37,24 +37,14 @@ func main() {
 	}
 	flag.Parse()
 
-	if len(flag.Args()) < 2 {
+	if flag.NArg() < 2 {
 		flag.Usage()
 		return
 	}
 
-	tilesets := make([]TilesetDescriptor, len(flag.Args()))
-	for idx, pathSpec := range flag.Args() {
-		backend, err := stringToBackend(pathSpec)
-		if err != nil {
-			log.Fatal(err)
-		}
-		tilesets[idx] = discoverTileset(backend)
-
-		if idx > 0 {
-			if tilesets[0].MaxZ != tilesets[idx].MaxZ || tilesets[0].MinZ != tilesets[idx].MinZ {
-				log.Fatalf("Zoom level mismatch for target %s\n", pathSpec)
-			}
-		}
+	tilesets, err := discoverTilesets(flag.Args())
+	if err != nil {
+		log.Fatalf("could not discover tilesets: %v", err)
 	}
 
 	dest := tilesets[0]
