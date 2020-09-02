@@ -190,10 +190,6 @@ func newS3Backend(path string) (*S3Backend, error) {
 }
 
 func stringToBackend(pathSpec string) (StorageBackend, error) {
-	// if pathSpec[len(pathSpec)-1] != '/' {
-	// 	pathSpec = pathSpec + "/"
-	// }
-
 	if strings.HasPrefix(pathSpec, "s3://") {
 		backend, err := newS3Backend(pathSpec)
 		if err != nil {
