@@ -18,6 +18,21 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+type StorageBackend interface {
+	GetDirectories(dirname string) ([]string, error)
+	GetFiles(dirname string) ([]string, error)
+	MkdirAll(dirname string) error
+	GetFile(filename string) ([]byte, error)
+	PutFile(filename string, content *bytes.Buffer) error
+	FileExists(filename string) bool
+}
+
+type Job struct {
+	source      TilesetDescriptor
+	dest        TilesetDescriptor
+	relTilePath string
+}
+
 func main() {
 	numWorkers := flag.Int("parallel", 1, "Number of parallel threads to use for processing")
 	quiet := flag.Bool("quiet", false, "Don't output progress information")
@@ -53,12 +68,6 @@ func main() {
 	// XXX check if input and output are both RGBA
 	// XXX check all tiles resolutions to match
 	// XXX actually support more than 1 input and 1 output file
-
-	type Job struct {
-		source      TilesetDescriptor
-		dest        TilesetDescriptor
-		relTilePath string
-	}
 
 	var wg sync.WaitGroup
 	jobChan := make(chan Job, 1024)
@@ -193,13 +202,4 @@ func stringToBackend(input string) (StorageBackend, error) {
 		return nil, err
 	}
 	return &FsBackend{BasePath: pathSpec}, nil
-}
-
-type StorageBackend interface {
-	GetDirectories(dirname string) ([]string, error)
-	GetFiles(dirname string) ([]string, error)
-	MkdirAll(dirname string) error
-	GetFile(filename string) ([]byte, error)
-	PutFile(filename string, content *bytes.Buffer) error
-	FileExists(filename string) bool
 }
