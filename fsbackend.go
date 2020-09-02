@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 )
 
 type FsBackend struct {
@@ -11,7 +12,7 @@ type FsBackend struct {
 }
 
 func (b *FsBackend) GetFile(filename string) ([]byte, error) {
-	f, err := os.Open(b.BasePath + filename)
+	f, err := os.Open(filepath.Join(b.BasePath, filename))
 	defer f.Close()
 	if err != nil {
 		return nil, err
@@ -38,7 +39,7 @@ func (b *FsBackend) MkdirAll(dirname string) error {
 }
 
 func (b *FsBackend) GetDirectories(dirname string) ([]string, error) {
-	files, err := ioutil.ReadDir(b.BasePath + dirname)
+	files, err := ioutil.ReadDir(filepath.Join(b.BasePath, dirname))
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +54,7 @@ func (b *FsBackend) GetDirectories(dirname string) ([]string, error) {
 }
 
 func (b *FsBackend) GetFiles(dirname string) ([]string, error) {
-	files, err := ioutil.ReadDir(b.BasePath + dirname)
+	files, err := ioutil.ReadDir(filepath.Join(b.BasePath, dirname))
 	if err != nil {
 		return nil, err
 	}
