@@ -172,28 +172,36 @@ func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err e
 	return nil
 }
 
-func stringToBackend(input string) (StorageBackend, error) {
-	pathSpec := input
-	if pathSpec[len(pathSpec)-1] != '/' {
-		pathSpec = pathSpec + "/"
+func newS3Backend(path string) (*S3Backend, error) {
+	pathComponents := strings.Split(path[5:], "/")
+
+	minioClient, err := minio.New(pathComponents[0], &minio.Options{
+		Creds:  credentials.NewStaticV4(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), ""),
+		Secure: true,
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	if strings.HasPrefix(pathSpec, "s3://") {
-		// Extract host & bucket
-		pathComponents := strings.Split(pathSpec[5:], "/")
+	return &S3Backend{
+		Client:   minioClient,
+		Bucket:   pathComponents[1],
+		BasePath: strings.Join(pathComponents[2:], "/"),
+	}, nil
+}
 
-		minioClient, err := minio.New(pathComponents[0], &minio.Options{
-			Creds:  credentials.NewStaticV4(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), ""),
-			Secure: true,
-		})
+func stringToBackend(pathSpec string) (StorageBackend, error) {
+	// if pathSpec[len(pathSpec)-1] != '/' {
+	// 	pathSpec = pathSpec + "/"
+	// }
+
+	if strings.HasPrefix(pathSpec, "s3://") {
+		backend, err := newS3Backend(pathSpec)
 		if err != nil {
 			return nil, err
 		}
-		return &S3Backend{
-			Client:   minioClient,
-			Bucket:   pathComponents[1],
-			BasePath: strings.Join(pathComponents[2:], "/"),
-		}, nil
+		return backend, nil
 	}
 
 	// Default: local filesystem.
