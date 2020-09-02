@@ -124,16 +124,14 @@ func main() {
 	wg.Wait()
 }
 
-func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err error) {
+func processInputTile(source, dest TilesetDescriptor, relTilePath string) error {
 	f, err := source.Backend.GetFile(relTilePath)
 	if err != nil {
-		return
+		return err
 	}
 	img, _, err := image.Decode(bytes.NewBuffer(f))
 	if err != nil {
-		log.Println(err.Error())
-		log.Println(f)
-		return
+		return err
 	}
 
 	skip, hasAlphaPixel := analyzeAlpha(img)
