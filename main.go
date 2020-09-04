@@ -18,6 +18,21 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+type StorageBackend interface {
+	GetDirectories(dirname string) ([]string, error)
+	GetFiles(dirname string) ([]string, error)
+	MkdirAll(dirname string) error
+	GetFile(filename string) ([]byte, error)
+	PutFile(filename string, content *bytes.Buffer) error
+	FileExists(filename string) bool
+}
+
+type Job struct {
+	source      TilesetDescriptor
+	dest        TilesetDescriptor
+	relTilePath string
+}
+
 func main() {
 	numWorkers := flag.Int("parallel", 1, "Number of parallel threads to use for processing")
 	quiet := flag.Bool("quiet", false, "Don't output progress information")
@@ -53,12 +68,6 @@ func main() {
 	// XXX check if input and output are both RGBA
 	// XXX check all tiles resolutions to match
 	// XXX actually support more than 1 input and 1 output file
-
-	type Job struct {
-		source      TilesetDescriptor
-		dest        TilesetDescriptor
-		relTilePath string
-	}
 
 	var wg sync.WaitGroup
 	jobChan := make(chan Job, 1024)
@@ -115,16 +124,14 @@ func main() {
 	wg.Wait()
 }
 
-func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err error) {
+func processInputTile(source, dest TilesetDescriptor, relTilePath string) error {
 	f, err := source.Backend.GetFile(relTilePath)
 	if err != nil {
-		return
+		return err
 	}
 	img, _, err := image.Decode(bytes.NewBuffer(f))
 	if err != nil {
-		log.Println(err.Error())
-		log.Println(f)
-		return
+		return err
 	}
 
 	skip, hasAlphaPixel := analyzeAlpha(img)
@@ -163,28 +170,32 @@ func processInputTile(source, dest TilesetDescriptor, relTilePath string) (err e
 	return nil
 }
 
-func stringToBackend(input string) (StorageBackend, error) {
-	pathSpec := input
-	if pathSpec[len(pathSpec)-1] != '/' {
-		pathSpec = pathSpec + "/"
+func newS3Backend(path string) (*S3Backend, error) {
+	pathComponents := strings.Split(path[5:], "/")
+
+	minioClient, err := minio.New(pathComponents[0], &minio.Options{
+		Creds:  credentials.NewStaticV4(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), ""),
+		Secure: true,
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	if strings.HasPrefix(pathSpec, "s3://") {
-		// Extract host & bucket
-		pathComponents := strings.Split(pathSpec[5:], "/")
+	return &S3Backend{
+		Client:   minioClient,
+		Bucket:   pathComponents[1],
+		BasePath: strings.Join(pathComponents[2:], "/"),
+	}, nil
+}
 
-		minioClient, err := minio.New(pathComponents[0], &minio.Options{
-			Creds:  credentials.NewStaticV4(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), ""),
-			Secure: true,
-		})
+func stringToBackend(pathSpec string) (StorageBackend, error) {
+	if strings.HasPrefix(pathSpec, "s3://") {
+		backend, err := newS3Backend(pathSpec)
 		if err != nil {
 			return nil, err
 		}
-		return &S3Backend{
-			Client:   minioClient,
-			Bucket:   pathComponents[1],
-			BasePath: strings.Join(pathComponents[2:], "/"),
-		}, nil
+		return backend, nil
 	}
 
 	// Default: local filesystem.
@@ -193,13 +204,4 @@ func stringToBackend(input string) (StorageBackend, error) {
 		return nil, err
 	}
 	return &FsBackend{BasePath: pathSpec}, nil
-}
-
-type StorageBackend interface {
-	GetDirectories(dirname string) ([]string, error)
-	GetFiles(dirname string) ([]string, error)
-	MkdirAll(dirname string) error
-	GetFile(filename string) ([]byte, error)
-	PutFile(filename string, content *bytes.Buffer) error
-	FileExists(filename string) bool
 }
