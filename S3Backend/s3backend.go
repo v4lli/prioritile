@@ -1,15 +1,37 @@
-package main
+package S3Backend
 
 import (
 	"bytes"
 	"context"
 	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"os"
+	"strings"
 )
 
 type S3Backend struct {
 	Client   *minio.Client
 	Bucket   string
 	BasePath string
+}
+
+func NewS3Backend(path string) (*S3Backend, error) {
+	pathComponents := strings.Split(path[5:], "/")
+
+	minioClient, err := minio.New(pathComponents[0], &minio.Options{
+		Creds:  credentials.NewStaticV4(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), ""),
+		Secure: true,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &S3Backend{
+		Client:   minioClient,
+		Bucket:   pathComponents[1],
+		BasePath: strings.Join(pathComponents[2:], "/"),
+	}, nil
 }
 
 func (s *S3Backend) GetFile(filename string) ([]byte, error) {

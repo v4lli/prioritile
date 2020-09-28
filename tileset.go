@@ -12,6 +12,10 @@ type TilesetDescriptor struct {
 	Backend StorageBackend
 }
 
+func (t TilesetDescriptor) String() string {
+	return fmt.Sprintf("%d-%d", t.MaxZ, t.MinZ)
+}
+
 func discoverTilesets(paths []string) ([]TilesetDescriptor, error) {
 	tilesets := make([]TilesetDescriptor, len(paths))
 	for i, path := range paths {

@@ -4,18 +4,16 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"github.com/schollz/progressbar/v3"
+	"github.com/v4lli/prioritile/FsBackend"
+	"github.com/v4lli/prioritile/S3Backend"
 	"image"
 	"image/draw"
 	"image/png"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/schollz/progressbar/v3"
 )
 
 type StorageBackend interface {
@@ -28,9 +26,9 @@ type StorageBackend interface {
 }
 
 type Job struct {
-	source      TilesetDescriptor
-	dest        TilesetDescriptor
-	relTilePath string
+	sources []*TilesetDescriptor
+	dest    TilesetDescriptor
+	tile    TileDescriptor
 }
 
 func main() {
@@ -64,134 +62,125 @@ func main() {
 
 	dest := tilesets[0]
 	sources := tilesets[1:]
+	tilesDb := make(map[string][]*TilesetDescriptor)
+	// composite-key hashmap; could be replaced with some fancy tree in the future, if necessary
+	if !*quiet {
+		log.Println("Indexing source directories and creating target structure...")
+	}
+	for idx, tileset := range sources {
+		tiles, err := discoverTiles(tileset)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, tile := range tiles {
+			if have, ok := tilesDb[tile.String()]; ok {
+				tilesDb[tile.String()] = append(have, &sources[idx])
+			} else {
+				tilesDb[tile.String()] = []*TilesetDescriptor{&sources[idx]}
+			}
+			if err := dest.Backend.MkdirAll(fmt.Sprintf("%d/%d/", tile.Z, tile.X)); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
 
 	// XXX check if input and output are both RGBA
 	// XXX check all tiles resolutions to match
-	// XXX actually support more than 1 input and 1 output file
+	var bar *progressbar.ProgressBar
 
 	var wg sync.WaitGroup
-	jobChan := make(chan Job, 1024)
+	jobChan := make(chan Job, 128)
 	for i := 0; i < *numWorkers; i++ {
 		wg.Add(1)
 		go func(jobChan <-chan Job) {
 			defer wg.Done()
 			for job := range jobChan {
-				if err := processInputTile(job.source, job.dest, job.relTilePath); err != nil {
-					panic(err)
+				if !*quiet {
+					bar.Add(1)
+				}
+
+				// iterate sources backwards until fully opaque tile has been found, then merge all up to that one
+				var toMerge []*image.Image
+				opaque := false
+				for i := range job.sources {
+					backend := job.sources[i].Backend
+					f, err := backend.GetFile(job.tile.String())
+					if err != nil {
+						log.Fatal(err)
+					}
+					img, _, err := image.Decode(bytes.NewBuffer(f))
+					if err != nil {
+						log.Fatal(err)
+					}
+
+					skip, _ := analyzeAlpha(img)
+					if skip {
+						continue
+					}
+					toMerge = append(toMerge, &img)
+					// XXX optimize to stop iterating once a opaque tile has been found
+					//if !hasAlphaPixel {
+					//	//opaque = true
+					//	break
+					//}
+				}
+
+				if !opaque {
+					destF, err := dest.Backend.GetFile(job.tile.String())
+					if err == nil {
+						img, _, err := image.Decode(bytes.NewBuffer(destF))
+						if err != nil {
+							log.Fatal(err)
+						}
+						toMerge = append([]*image.Image{&img}, toMerge...)
+					}
+				}
+				if len(toMerge) < 1 {
+					continue
+				}
+
+				merged := image.NewRGBA(image.Rect(0, 0, (*toMerge[0]).Bounds().Max.X, (*toMerge[0]).Bounds().Max.Y))
+				for _, img := range toMerge {
+					canvas := image.NewRGBA(image.Rect(0, 0, (*merged).Bounds().Max.X, (*merged).Bounds().Max.Y))
+					draw.Draw(canvas, (*merged).Bounds(), merged, image.Point{0, 0}, draw.Over)
+					draw.Draw(canvas, (*img).Bounds(), *img, image.Point{0, 0}, draw.Over)
+					merged = canvas
+				}
+
+				buf := new(bytes.Buffer)
+				if err = png.Encode(buf, merged); err != nil {
+					log.Fatal(err)
+				}
+				if err = dest.Backend.PutFile(job.tile.String(), buf); err != nil {
+					log.Fatal(err)
 				}
 			}
 		}(jobChan)
 	}
 
-	source := sources[0]
-	for z := source.MinZ; z <= source.MaxZ; z++ {
-		zPart := fmt.Sprintf("%d/", z)
-		xDirs, err := source.Backend.GetDirectories(zPart)
+	if !*quiet {
+		bar = progressbar.Default(int64(len(tilesDb)))
+	}
+
+	for key, value := range tilesDb {
+		tile, err := Str2Tile(key)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
-		var bar *progressbar.ProgressBar
-		if !*quiet {
-			log.Printf("Zoom level %d/%d", z, source.MaxZ)
-			bar = progressbar.Default(int64(len(xDirs)))
-		}
-		for _, x := range xDirs {
-			xNum, err := strconv.Atoi(x)
-			if err != nil {
-				panic(err)
-			}
-			xPart := fmt.Sprintf("%s%d/", zPart, xNum)
-			yFiles, err := source.Backend.GetFiles(xPart)
-			if err != nil {
-				panic(err)
-			}
-			for _, y := range yFiles {
-				if err := dest.Backend.MkdirAll(xPart); err != nil {
-					log.Fatal(err)
-				}
-				jobChan <- Job{
-					source:      source,
-					dest:        dest,
-					relTilePath: xPart + y,
-				}
-			}
-			if !*quiet {
-				bar.Add(1)
-			}
+		jobChan <- Job{
+			sources: value,
+			dest:    dest,
+			tile:    *tile,
 		}
 	}
+
 	close(jobChan)
 	wg.Wait()
 }
 
-func processInputTile(source, dest TilesetDescriptor, relTilePath string) error {
-	f, err := source.Backend.GetFile(relTilePath)
-	if err != nil {
-		return err
-	}
-	img, _, err := image.Decode(bytes.NewBuffer(f))
-	if err != nil {
-		return err
-	}
-
-	skip, hasAlphaPixel := analyzeAlpha(img)
-	if skip {
-		return nil
-	}
-
-	// if the front image has at least one transparent pixel (and exists), merge front and back
-	if hasAlphaPixel && dest.Backend.FileExists(relTilePath) {
-		destF, err := dest.Backend.GetFile(relTilePath)
-		if err != nil {
-			return err
-		}
-		destImg, _, err := image.Decode(bytes.NewBuffer(destF))
-		if err != nil {
-			return err
-		}
-		merged := image.NewRGBA(image.Rect(0, 0, destImg.Bounds().Max.X, destImg.Bounds().Max.Y))
-		draw.Draw(merged, destImg.Bounds(), destImg, image.Point{0, 0}, draw.Over)
-		draw.Draw(merged, img.Bounds(), img, image.Point{0, 0}, draw.Over)
-
-		buf := new(bytes.Buffer)
-		if err = png.Encode(buf, merged); err != nil {
-			return err
-		}
-		if err = dest.Backend.PutFile(relTilePath, buf); err != nil {
-			return err
-		}
-	} else {
-		// if the front tile completely occludes the back tile, just replace it
-		if err = dest.Backend.PutFile(relTilePath, bytes.NewBuffer(f)); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func newS3Backend(path string) (*S3Backend, error) {
-	pathComponents := strings.Split(path[5:], "/")
-
-	minioClient, err := minio.New(pathComponents[0], &minio.Options{
-		Creds:  credentials.NewStaticV4(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), ""),
-		Secure: true,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &S3Backend{
-		Client:   minioClient,
-		Bucket:   pathComponents[1],
-		BasePath: strings.Join(pathComponents[2:], "/"),
-	}, nil
-}
-
 func stringToBackend(pathSpec string) (StorageBackend, error) {
 	if strings.HasPrefix(pathSpec, "s3://") {
-		backend, err := newS3Backend(pathSpec)
+		backend, err := S3Backend.NewS3Backend(pathSpec)
 		if err != nil {
 			return nil, err
 		}
@@ -203,5 +192,5 @@ func stringToBackend(pathSpec string) (StorageBackend, error) {
 	if os.IsNotExist(err) {
 		return nil, err
 	}
-	return &FsBackend{BasePath: pathSpec}, nil
+	return &FsBackend.FsBackend{BasePath: pathSpec}, nil
 }
