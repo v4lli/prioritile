@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 type StorageBackend interface {
@@ -31,6 +32,13 @@ type Job struct {
 	tile    TileDescriptor
 }
 
+func atomicAverage(target *int64, channel *chan time.Duration) {
+	// This is more fun than a locked section to take care about atomic stuff
+	for i := range *channel {
+		*target = (*target + i.Nanoseconds()) / 2
+	}
+}
+
 func main() {
 	numWorkers := flag.Int("parallel", 1, "Number of parallel threads to use for processing")
 	quiet := flag.Bool("quiet", false, "Don't output progress information")
@@ -45,6 +53,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Some assumptions about the source directories:")
 		fmt.Fprintln(os.Stderr, "- Tiles are RGBA PNGs")
 		fmt.Fprintln(os.Stderr, "- NODATA is represented by 100% alpha")
+		fmt.Fprintln(os.Stderr, "- Resolution of corresponding tiles matches")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "S3 disk backends are supported as source and target by prefixing the tile")
+		fmt.Fprintln(os.Stderr, "directories with 's3://', e.g. 's3://example.com/source/'.")
+		fmt.Fprintln(os.Stderr, "S3 authentication information is read from environment variables:")
+		fmt.Fprintln(os.Stderr, "AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY")
 		fmt.Fprintln(os.Stderr, "")
 		flag.PrintDefaults()
 	}
@@ -88,6 +102,20 @@ func main() {
 	// XXX check all tiles resolutions to match
 	var bar *progressbar.ProgressBar
 
+	// Performance measurement setup
+	counterBackwardsIteration := make(chan time.Duration, 1024)
+	var counterBackwardsIterationDurationNS int64
+	go atomicAverage(&counterBackwardsIterationDurationNS, &counterBackwardsIteration)
+	counterOpaquenessCheck := make(chan time.Duration, 1024)
+	var counterOpaquenessCheckNS int64
+	go atomicAverage(&counterOpaquenessCheckNS, &counterOpaquenessCheck)
+	counterDraw := make(chan time.Duration, 1024)
+	var counterDrawNS int64
+	go atomicAverage(&counterDrawNS, &counterDraw)
+	counterEncode := make(chan time.Duration, 1024)
+	var counterEncodeNS int64
+	go atomicAverage(&counterEncodeNS, &counterEncode)
+
 	var wg sync.WaitGroup
 	jobChan := make(chan Job, 128)
 	for i := 0; i < *numWorkers; i++ {
@@ -102,6 +130,7 @@ func main() {
 				// iterate sources backwards until fully opaque tile has been found, then merge all up to that one
 				var toMerge []*image.Image
 				opaque := false
+				startBackwardsIteration := time.Now()
 				for i := range job.sources {
 					backend := job.sources[i].Backend
 					f, err := backend.GetFile(job.tile.String())
@@ -124,8 +153,10 @@ func main() {
 					//	break
 					//}
 				}
+				counterBackwardsIteration <- time.Since(startBackwardsIteration)
 
 				if !opaque {
+					counterOpaquenessCheckStart := time.Now()
 					destF, err := dest.Backend.GetFile(job.tile.String())
 					if err == nil {
 						img, _, err := image.Decode(bytes.NewBuffer(destF))
@@ -134,11 +165,14 @@ func main() {
 						}
 						toMerge = append([]*image.Image{&img}, toMerge...)
 					}
+					counterOpaquenessCheck <- time.Since(counterOpaquenessCheckStart)
+
 				}
 				if len(toMerge) < 1 {
 					continue
 				}
 
+				counterDrawStart := time.Now()
 				merged := image.NewRGBA(image.Rect(0, 0, (*toMerge[0]).Bounds().Max.X, (*toMerge[0]).Bounds().Max.Y))
 				for _, img := range toMerge {
 					canvas := image.NewRGBA(image.Rect(0, 0, (*merged).Bounds().Max.X, (*merged).Bounds().Max.Y))
@@ -146,7 +180,9 @@ func main() {
 					draw.Draw(canvas, (*img).Bounds(), *img, image.Point{0, 0}, draw.Over)
 					merged = canvas
 				}
+				counterDraw <- time.Since(counterDrawStart)
 
+				counterEncodeStart := time.Now()
 				buf := new(bytes.Buffer)
 				if err = png.Encode(buf, merged); err != nil {
 					log.Fatal(err)
@@ -154,6 +190,7 @@ func main() {
 				if err = dest.Backend.PutFile(job.tile.String(), buf); err != nil {
 					log.Fatal(err)
 				}
+				counterEncode <- time.Since(counterEncodeStart)
 			}
 		}(jobChan)
 	}
@@ -176,6 +213,10 @@ func main() {
 
 	close(jobChan)
 	wg.Wait()
+	fmt.Printf("Average Backwards Iteration: %s\n", time.Duration(counterBackwardsIterationDurationNS/1000/1000))
+	fmt.Printf("Average Opaqueness Check: %s\n", time.Duration(counterOpaquenessCheckNS/1000/1000))
+	fmt.Printf("Average Draw: %s\n", time.Duration(counterDrawNS/1000/1000))
+	fmt.Printf("Average Encode: %s\n", time.Duration(counterEncodeNS/1000/1000))
 }
 
 func stringToBackend(pathSpec string) (StorageBackend, error) {
