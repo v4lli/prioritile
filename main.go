@@ -42,6 +42,7 @@ func atomicAverage(target *int64, channel *chan time.Duration) {
 func main() {
 	numWorkers := flag.Int("parallel", 1, "Number of parallel threads to use for processing")
 	quiet := flag.Bool("quiet", false, "Don't output progress information")
+	debug := flag.Bool("debug", false, "Enable debugging (tracing and some perf counters)")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: prioritile [-parallel=4] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
 		fmt.Fprintln(os.Stderr, "")
@@ -109,6 +110,9 @@ func main() {
 	counterOpaquenessCheck := make(chan time.Duration, 1024)
 	var counterOpaquenessCheckNS int64
 	go atomicAverage(&counterOpaquenessCheckNS, &counterOpaquenessCheck)
+	counterAlphaCheck := make(chan time.Duration, 1024)
+	var counterAlphaCheckNS int64
+	go atomicAverage(&counterAlphaCheckNS, &counterAlphaCheck)
 	counterDraw := make(chan time.Duration, 1024)
 	var counterDrawNS int64
 	go atomicAverage(&counterDrawNS, &counterDraw)
@@ -142,7 +146,9 @@ func main() {
 						log.Fatal(err)
 					}
 
+					counterAlphaCheckStart := time.Now()
 					skip, _ := analyzeAlpha(img)
+					counterAlphaCheck <- time.Since(counterAlphaCheckStart)
 					if skip {
 						continue
 					}
@@ -155,8 +161,8 @@ func main() {
 				}
 				counterBackwardsIteration <- time.Since(startBackwardsIteration)
 
+				counterOpaquenessCheckStart := time.Now()
 				if !opaque {
-					counterOpaquenessCheckStart := time.Now()
 					destF, err := dest.Backend.GetFile(job.tile.String())
 					if err == nil {
 						img, _, err := image.Decode(bytes.NewBuffer(destF))
@@ -165,9 +171,8 @@ func main() {
 						}
 						toMerge = append([]*image.Image{&img}, toMerge...)
 					}
-					counterOpaquenessCheck <- time.Since(counterOpaquenessCheckStart)
-
 				}
+				counterOpaquenessCheck <- time.Since(counterOpaquenessCheckStart)
 				if len(toMerge) < 1 {
 					continue
 				}
@@ -213,10 +218,13 @@ func main() {
 
 	close(jobChan)
 	wg.Wait()
-	fmt.Printf("Average Backwards Iteration: %s\n", time.Duration(counterBackwardsIterationDurationNS/1000/1000))
-	fmt.Printf("Average Opaqueness Check: %s\n", time.Duration(counterOpaquenessCheckNS/1000/1000))
-	fmt.Printf("Average Draw: %s\n", time.Duration(counterDrawNS/1000/1000))
-	fmt.Printf("Average Encode: %s\n", time.Duration(counterEncodeNS/1000/1000))
+	if *debug {
+		fmt.Printf("Average Backwards Iteration: %s\n", time.Duration(counterBackwardsIterationDurationNS/1000/1000))
+		fmt.Printf("Average Opaqueness Check: %s\n", time.Duration(counterOpaquenessCheckNS/1000/1000))
+		fmt.Printf("\\_Average Alpa Check: %s\n", time.Duration(counterAlphaCheckNS/1000/1000))
+		fmt.Printf("Average Draw: %s\n", time.Duration(counterDrawNS/1000/1000))
+		fmt.Printf("Average Encode: %s\n", time.Duration(counterEncodeNS/1000/1000))
+	}
 }
 
 func stringToBackend(pathSpec string) (StorageBackend, error) {

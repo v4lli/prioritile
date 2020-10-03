@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 )
@@ -45,10 +46,11 @@ func discoverTileset(backend StorageBackend) (TilesetDescriptor, error) {
 	var z []int
 	for _, f := range files {
 		i, err := strconv.Atoi(f)
-		if err != nil {
-			return TilesetDescriptor{}, err
+		if err == nil {
+			z = append(z, i)
+		} else {
+			log.Printf("Invalid file '%s'", f)
 		}
-		z = append(z, i)
 	}
 	if z == nil {
 		return TilesetDescriptor{}, fmt.Errorf("invalid or empty tileset")
