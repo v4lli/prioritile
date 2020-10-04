@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	atomic "sync/atomic"
 	"time"
 )
 
@@ -43,8 +44,9 @@ func main() {
 	numWorkers := flag.Int("parallel", 1, "Number of parallel threads to use for processing")
 	quiet := flag.Bool("quiet", false, "Don't output progress information")
 	debug := flag.Bool("debug", false, "Enable debugging (tracing and some perf counters)")
+	report := flag.Bool("report", false, "Enable periodic reports (every min)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: prioritile [-parallel=4] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
+		fmt.Fprintln(os.Stderr, "Usage: prioritile [-debug] [-report] [-parallel=4] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "prioritile applies a painter-type algorithm to the first tiles location specified")
 		fmt.Fprintln(os.Stderr, "on the commandline in an efficient way by leveraging the XYZ (and WMTS) directory ")
@@ -122,6 +124,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	jobChan := make(chan Job, 128)
+	var iterationCounter int32
 	for i := 0; i < *numWorkers; i++ {
 		wg.Add(1)
 		go func(jobChan <-chan Job) {
@@ -196,12 +199,20 @@ func main() {
 					log.Fatal(err)
 				}
 				counterEncode <- time.Since(counterEncodeStart)
+				atomic.AddInt32(&iterationCounter, 1)
 			}
 		}(jobChan)
 	}
 
 	if !*quiet {
 		bar = progressbar.Default(int64(len(tilesDb)))
+	}
+
+	if *report {
+		go func() {
+			log.Printf("Progress: %d of %d total\n", iterationCounter, len(tilesDb))
+			time.Sleep(60 * time.Second)
+		}()
 	}
 
 	for key, value := range tilesDb {
