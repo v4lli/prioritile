@@ -45,8 +45,9 @@ func main() {
 	quiet := flag.Bool("quiet", false, "Don't output progress information")
 	debug := flag.Bool("debug", false, "Enable debugging (tracing and some perf counters)")
 	report := flag.Bool("report", false, "Enable periodic reports (every min)")
+	ignoreMissingTiles := flag.Bool("ignore-missing", false, "Ignore missing or otherwise unavailable upstream tiles.")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: prioritile [-debug] [-report] [-parallel=4] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
+		fmt.Fprintln(os.Stderr, "Usage: prioritile [-debug] [-report] [-ignore-missing] [-parallel=4] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "prioritile applies a painter-type algorithm to the first tiles location specified")
 		fmt.Fprintln(os.Stderr, "on the commandline in an efficient way by leveraging the XYZ (and WMTS) directory ")
@@ -142,11 +143,19 @@ func main() {
 					backend := job.sources[i].Backend
 					f, err := backend.GetFile(job.tile.String())
 					if err != nil {
-						log.Fatal(err)
+						if *ignoreMissingTiles {
+							continue
+						} else {
+							log.Fatal(err)
+						}
 					}
 					img, _, err := image.Decode(bytes.NewBuffer(f))
 					if err != nil {
-						log.Fatal(err)
+						if *ignoreMissingTiles {
+							continue
+						} else {
+							log.Fatal(err)
+						}
 					}
 
 					counterAlphaCheckStart := time.Now()
@@ -170,7 +179,11 @@ func main() {
 					if err == nil {
 						img, _, err := image.Decode(bytes.NewBuffer(destF))
 						if err != nil {
-							log.Fatal(err)
+							if *ignoreMissingTiles {
+								continue
+							} else {
+								log.Fatal(err)
+							}
 						}
 						toMerge = append([]*image.Image{&img}, toMerge...)
 					}
@@ -193,10 +206,18 @@ func main() {
 				counterEncodeStart := time.Now()
 				buf := new(bytes.Buffer)
 				if err = png.Encode(buf, merged); err != nil {
-					log.Fatal(err)
+					if *ignoreMissingTiles {
+						continue
+					} else {
+						log.Fatal(err)
+					}
 				}
 				if err = dest.Backend.PutFile(job.tile.String(), buf); err != nil {
-					log.Fatal(err)
+					if *ignoreMissingTiles {
+						continue
+					} else {
+						log.Fatal(err)
+					}
 				}
 				counterEncode <- time.Since(counterEncodeStart)
 				atomic.AddInt32(&iterationCounter, 1)
