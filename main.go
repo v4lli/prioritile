@@ -45,9 +45,9 @@ func main() {
 	quiet := flag.Bool("quiet", false, "Don't output progress information")
 	debug := flag.Bool("debug", false, "Enable debugging (tracing and some perf counters)")
 	report := flag.Bool("report", false, "Enable periodic reports (every min)")
-	ignoreMissingTiles := flag.Bool("ignore-missing", false, "Ignore missing or otherwise unavailable upstream tiles.")
+	bestEffort := flag.Bool("best-effort", false, "Best-effort merging: ignore erroneous tilesets completely and skip single failed tiles.")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: prioritile [-debug] [-report] [-ignore-missing] [-parallel=4] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
+		fmt.Fprintln(os.Stderr, "Usage: prioritile [-debug] [-report] [-best-effort] [-parallel=4] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "prioritile applies a painter-type algorithm to the first tiles location specified")
 		fmt.Fprintln(os.Stderr, "on the commandline in an efficient way by leveraging the XYZ (and WMTS) directory ")
@@ -73,22 +73,35 @@ func main() {
 		return
 	}
 
-	tilesets, err := discoverTilesets(flag.Args())
-	if err != nil {
-		log.Fatalf("could not discover tilesets: %v", err)
+	if !*quiet {
+		log.Println("Discovering tilesets...")
+	}
+	tilesets, errs := discoverTilesets(flag.Args())
+	if errs != nil && !*bestEffort {
+		log.Fatalf("could not discover tilesets: %v", errs)
 	}
 
 	dest := tilesets[0]
 	sources := tilesets[1:]
 	tilesDb := make(map[string][]*TilesetDescriptor)
+	var indexingBar *progressbar.ProgressBar
 	// composite-key hashmap; could be replaced with some fancy tree in the future, if necessary
 	if !*quiet {
 		log.Println("Indexing source directories and creating target structure...")
+		indexingBar = progressbar.Default(int64(len(tilesDb)))
 	}
 	for idx, tileset := range sources {
+		if !*quiet {
+			indexingBar.Add(1)
+		}
 		tiles, err := discoverTiles(tileset)
 		if err != nil {
-			log.Fatal(err)
+			if *bestEffort {
+				log.Println(err)
+				continue
+			} else {
+				log.Fatal(err)
+			}
 		}
 		for _, tile := range tiles {
 			if have, ok := tilesDb[tile.String()]; ok {
@@ -143,7 +156,8 @@ func main() {
 					backend := job.sources[i].Backend
 					f, err := backend.GetFile(job.tile.String())
 					if err != nil {
-						if *ignoreMissingTiles {
+						if *bestEffort {
+							log.Println(err)
 							continue
 						} else {
 							log.Fatal(err)
@@ -151,7 +165,8 @@ func main() {
 					}
 					img, _, err := image.Decode(bytes.NewBuffer(f))
 					if err != nil {
-						if *ignoreMissingTiles {
+						if *bestEffort {
+							log.Println(err)
 							continue
 						} else {
 							log.Fatal(err)
@@ -179,7 +194,8 @@ func main() {
 					if err == nil {
 						img, _, err := image.Decode(bytes.NewBuffer(destF))
 						if err != nil {
-							if *ignoreMissingTiles {
+							if *bestEffort {
+								log.Println(err)
 								continue
 							} else {
 								log.Fatal(err)
@@ -205,15 +221,17 @@ func main() {
 
 				counterEncodeStart := time.Now()
 				buf := new(bytes.Buffer)
-				if err = png.Encode(buf, merged); err != nil {
-					if *ignoreMissingTiles {
+				if err := png.Encode(buf, merged); err != nil {
+					if *bestEffort {
+						log.Println(err)
 						continue
 					} else {
 						log.Fatal(err)
 					}
 				}
-				if err = dest.Backend.PutFile(job.tile.String(), buf); err != nil {
-					if *ignoreMissingTiles {
+				if err := dest.Backend.PutFile(job.tile.String(), buf); err != nil {
+					if *bestEffort {
+						log.Println(err)
 						continue
 					} else {
 						log.Fatal(err)
