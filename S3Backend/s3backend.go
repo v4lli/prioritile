@@ -71,7 +71,9 @@ func (s *S3Backend) GetDirectories(dirname string) ([]string, error) {
 		}
 		if object.Key[len(object.Key)-1] == '/' {
 			// chop trailing slash and prefix
-			result = append(result, object.Key[len(prefix):len(object.Key)-1])
+			if len(prefix) != len(object.Key) {
+				result = append(result, object.Key[len(prefix):len(object.Key)-1])
+			}
 		}
 	}
 	return result, nil
