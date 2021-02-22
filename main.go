@@ -88,7 +88,7 @@ func main() {
 	// composite-key hashmap; could be replaced with some fancy tree in the future, if necessary
 	if !*quiet {
 		log.Println("Indexing source directories and creating target structure...")
-		indexingBar = progressbar.Default(int64(len(tilesDb)))
+		indexingBar = progressbar.Default(int64(len(sources)))
 	}
 	for idx, tileset := range sources {
 		if !*quiet {
