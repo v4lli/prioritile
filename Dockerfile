@@ -5,7 +5,7 @@ WORKDIR /go/src/
 ENV GO111MODULE on
 
 # Download dependencies independently for faster build
-COPY prioritile/go.mod prioritile/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY prioritile ./
