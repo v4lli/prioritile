@@ -8,5 +8,5 @@ ENV GO111MODULE on
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY prioritile ./
+COPY . .
 RUN go build

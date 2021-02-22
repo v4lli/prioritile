@@ -1,14 +1,9 @@
 name: Go
 
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+on: [push, pull_request]
 
 jobs:
-
-  build:
+  build-native:
     name: Build
     runs-on: ubuntu-latest
     steps:
