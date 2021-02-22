@@ -1,12 +1,13 @@
-# Build prioritile in separate container
-FROM golang:buster as builder-prioritile
+FROM golang:alpine as gobuild
 
+RUN apk add --no-cache git gcc libc-dev libstdc++
 WORKDIR /go/src/
 ENV GO111MODULE on
+RUN git clone https://github.com/v4lli/prioritile.git
+RUN cd prioritile && go build -ldflags "-linkmode external -extldflags -static" -a
 
-# Download dependencies independently for faster build
-COPY go.mod go.sum ./
-RUN go mod download
+FROM osgeo/gdal:ubuntu-full-latest
 
-COPY . .
-RUN go build -ldflags "-linkmode external -extldflags -static" -a
+WORKDIR /app
+
+COPY --from=gobuild /go/src/prioritile/prioritile /app/prioritile
