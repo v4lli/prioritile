@@ -20,10 +20,10 @@ At least two (one base tileset + one overlay) source directives are required (ob
 
 `go build` 😜
 
-(You can try `make` to run prioritile on the included demo dataset).
+(You can try `make` to run prioritile on the included demo dataset). Also note that [prioritile is provided as a Docker base layer](https://github.com/users/v4lli/packages/container/package/prioritle) whic is updated automatically through Github Actions.
 
 ## Usage
 
 All source directives are overlayed in the z-order specified on the command line. The first path specification is both the base layer and the output:
 
-```prioritile [-q] [-parallel=4] /tiles/target/ /tiles/source1/ [s3://foo/tiles/source2/ [...]]```
+```prioritile [-q] [-best-effort] [-parallel=4] /tiles/target/ /tiles/source1/ [s3://foo/tiles/source2/ [...]]```
