@@ -21,7 +21,6 @@ func analyzeAlpha(img image.Image) (bool, bool) {
 					return skip, hasAlphaPixel // return early
 				}
 			}
-			// XXX could return early if one non-alpha pixel and one alpha pixel has been found.
 		}
 	}
 	return skip, hasAlphaPixel
