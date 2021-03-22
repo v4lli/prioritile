@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/schollz/progressbar/v3"
-	"github.com/v4lli/prioritile/FsBackend"
-	"github.com/v4lli/prioritile/S3Backend"
 	"image"
 	"image/draw"
 	"image/png"
@@ -16,6 +13,10 @@ import (
 	"sync"
 	atomic "sync/atomic"
 	"time"
+
+	"github.com/schollz/progressbar/v3"
+	"github.com/v4lli/prioritile/FsBackend"
+	"github.com/v4lli/prioritile/S3Backend"
 )
 
 type StorageBackend interface {
@@ -29,7 +30,7 @@ type StorageBackend interface {
 
 type Job struct {
 	sources []*TilesetDescriptor
-	dest    TilesetDescriptor
+	target  TilesetDescriptor
 	tile    TileDescriptor
 }
 
@@ -46,6 +47,8 @@ func main() {
 	debug := flag.Bool("debug", false, "Enable debugging (tracing and some perf counters)")
 	report := flag.Bool("report", false, "Enable periodic reports (every min)")
 	bestEffort := flag.Bool("best-effort", false, "Best-effort merging: ignore erroneous tilesets completely and skip single failed tiles.")
+	minZ := flag.Int("minZ", -1, "Min zoom level to merge into target")
+	maxZ := flag.Int("maxZ", -1, "Max zoom level to merge into target")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: prioritile [-debug] [-report] [-best-effort] [-parallel=4] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
 		fmt.Fprintln(os.Stderr, "")
@@ -76,13 +79,31 @@ func main() {
 	if !*quiet {
 		log.Println("Discovering tilesets...")
 	}
-	tilesets, errs := discoverTilesets(flag.Args())
+
+	targetBackend, err := stringToBackend(flag.Args()[0])
+	if err != nil {
+		log.Fatalf("problem with backend: %s", err)
+	}
+
+	var target TilesetDescriptor
+	if *minZ != -1 || *maxZ != -1 {
+		target = TilesetDescriptor{
+			MinZ:    *minZ,
+			MaxZ:    *maxZ,
+			Backend: targetBackend,
+		}
+	} else {
+		target, err = discoverTileset(targetBackend, -1, -1)
+		if err != nil && !*bestEffort {
+			log.Fatalf("could not discover target tileset: %v", err)
+		}
+	}
+
+	sources, errs := discoverTilesets(flag.Args()[1:], target.MinZ, target.MaxZ)
 	if errs != nil && !*bestEffort {
 		log.Fatalf("could not discover tilesets: %v", errs)
 	}
 
-	dest := tilesets[0]
-	sources := tilesets[1:]
 	tilesDb := make(map[string][]*TilesetDescriptor)
 	var indexingBar *progressbar.ProgressBar
 	// composite-key hashmap; could be replaced with some fancy tree in the future, if necessary
@@ -109,7 +130,8 @@ func main() {
 			} else {
 				tilesDb[tile.String()] = []*TilesetDescriptor{&sources[idx]}
 			}
-			if err := dest.Backend.MkdirAll(fmt.Sprintf("%d/%d/", tile.Z, tile.X)); err != nil {
+			err := target.Backend.MkdirAll(fmt.Sprintf("%d/%d/", tile.Z, tile.X))
+			if err != nil {
 				log.Fatal(err)
 			}
 		}
@@ -181,18 +203,18 @@ func main() {
 					}
 					toMerge = append(toMerge, &img)
 					// XXX optimize to stop iterating once a opaque tile has been found
-					//if !hasAlphaPixel {
-					//	//opaque = true
-					//	break
-					//}
+					// if !hasAlphaPixel {
+					// 	//opaque = true
+					// 	break
+					// }
 				}
 				counterBackwardsIteration <- time.Since(startBackwardsIteration)
 
 				counterOpaquenessCheckStart := time.Now()
 				if !opaque {
-					destF, err := dest.Backend.GetFile(job.tile.String())
+					targetF, err := target.Backend.GetFile(job.tile.String())
 					if err == nil {
-						img, _, err := image.Decode(bytes.NewBuffer(destF))
+						img, _, err := image.Decode(bytes.NewBuffer(targetF))
 						if err != nil {
 							if *bestEffort {
 								log.Println(err)
@@ -229,7 +251,7 @@ func main() {
 						log.Fatal(err)
 					}
 				}
-				if err := dest.Backend.PutFile(job.tile.String(), buf); err != nil {
+				if err := target.Backend.PutFile(job.tile.String(), buf); err != nil {
 					if *bestEffort {
 						log.Println(err)
 						continue
@@ -261,7 +283,7 @@ func main() {
 		}
 		jobChan <- Job{
 			sources: value,
-			dest:    dest,
+			target:  target,
 			tile:    *tile,
 		}
 	}
