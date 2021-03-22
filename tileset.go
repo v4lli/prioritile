@@ -17,7 +17,7 @@ func (t TilesetDescriptor) String() string {
 	return fmt.Sprintf("%d-%d", t.MaxZ, t.MinZ)
 }
 
-func discoverTilesets(paths []string) ([]TilesetDescriptor, []error) {
+func discoverTilesets(paths []string, minZ int, maxZ int) ([]TilesetDescriptor, []error) {
 	var tilesets []TilesetDescriptor
 	var errors []error
 
@@ -30,14 +30,15 @@ func discoverTilesets(paths []string) ([]TilesetDescriptor, []error) {
 			continue
 		}
 
-		tileset, err := discoverTileset(backend)
+		tileset, err := discoverTileset(backend, minZ, maxZ)
+
 		if err != nil {
-			errors = append(errors, fmt.Errorf("could not discover tileset: %v", err))
+			errors = append(errors, fmt.Errorf("could not discover tileset: %v in %s", err, path))
 			continue
 		}
 
-		if len(tilesets) > 0 && tilesets[0].MaxZ != tileset.MaxZ || tileset.MinZ != tileset.MinZ {
-			errors = append(errors, fmt.Errorf("zoom level mismatch for target %s", path))
+		if len(tilesets) > 0 && (tilesets[0].MaxZ != tileset.MaxZ || tilesets[0].MinZ != tileset.MinZ) {
+			errors = append(errors, fmt.Errorf("zoom level mismatch for target and source %s", path))
 			continue
 		}
 		tilesets = append(tilesets, tileset)
@@ -45,7 +46,7 @@ func discoverTilesets(paths []string) ([]TilesetDescriptor, []error) {
 	return tilesets, errors
 }
 
-func discoverTileset(backend StorageBackend) (TilesetDescriptor, error) {
+func discoverTileset(backend StorageBackend, minZ int, maxZ int) (TilesetDescriptor, error) {
 	files, err := backend.GetDirectories("")
 	if err != nil {
 		return TilesetDescriptor{}, err
@@ -54,6 +55,9 @@ func discoverTileset(backend StorageBackend) (TilesetDescriptor, error) {
 	var z []int
 	for _, f := range files {
 		i, err := strconv.Atoi(f)
+		if i < minZ || (i > maxZ && maxZ != -1) {
+			continue
+		}
 		if err == nil {
 			z = append(z, i)
 		} else {

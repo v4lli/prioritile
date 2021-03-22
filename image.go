@@ -13,10 +13,15 @@ func analyzeAlpha(img image.Image) (bool, bool) {
 			// XXX this feels like a hack:
 			if a == 65535 || a == 0xff {
 				skip = false
+				if hasAlphaPixel {
+					break // return early
+				}
 			} else {
 				hasAlphaPixel = true
+				if !skip {
+					break // return early
+				}
 			}
-			// XXX could return early if one non-alpha pixel and one alpha pixel has been found.
 		}
 	}
 	return skip, hasAlphaPixel
