@@ -170,11 +170,11 @@ func main() {
 					bar.Add(1)
 				}
 
-				// iterate sources backwards until fully opaque tile has been found, then merge all up to that one
+				// iterate sources backwards (until fully opaque tile has been found), then merge all up to that one
 				var toMerge []*image.Image
 				opaque := false
 				startBackwardsIteration := time.Now()
-				for i := range job.sources {
+				for i := len(job.sources) - 1; i >= 0; i-- {
 					backend := job.sources[i].Backend
 					f, err := backend.GetFile(job.tile.String())
 					if err != nil {
@@ -196,17 +196,16 @@ func main() {
 					}
 
 					counterAlphaCheckStart := time.Now()
-					skip, _ := analyzeAlpha(img)
+					skip, hasAlphaPixel := analyzeAlpha(img)
 					counterAlphaCheck <- time.Since(counterAlphaCheckStart)
 					if skip {
 						continue
 					}
-					toMerge = append(toMerge, &img)
-					// XXX optimize to stop iterating once a opaque tile has been found
-					// if !hasAlphaPixel {
-					// 	//opaque = true
-					// 	break
-					// }
+					toMerge = append([]*image.Image{&img}, toMerge...)
+					if !hasAlphaPixel {
+						opaque = true
+						break
+					}
 				}
 				counterBackwardsIteration <- time.Since(startBackwardsIteration)
 
