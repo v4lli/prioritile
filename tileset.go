@@ -17,12 +17,10 @@ func (t TilesetDescriptor) String() string {
 	return fmt.Sprintf("%d-%d", t.MaxZ, t.MinZ)
 }
 
-func discoverTilesets(paths []string, minZ int, maxZ int) ([]TilesetDescriptor, []error) {
+func discoverTilesets(paths []string, target TilesetDescriptor, bestEffort bool) ([]TilesetDescriptor, []error) {
 	var tilesets []TilesetDescriptor
 	var errors []error
 
-	// XXX if discovery for the target tileset fails, the first source might be used as a target, which is somewhat
-	// undesirable, I believe
 	for _, path := range paths {
 		backend, err := stringToBackend(path)
 		if err != nil {
@@ -30,16 +28,18 @@ func discoverTilesets(paths []string, minZ int, maxZ int) ([]TilesetDescriptor, 
 			continue
 		}
 
-		tileset, err := discoverTileset(backend, minZ, maxZ)
+		tileset, err := discoverTileset(backend, target.MinZ, target.MaxZ)
 
 		if err != nil {
 			errors = append(errors, fmt.Errorf("could not discover tileset: %v in %s", err, path))
 			continue
 		}
 
-		if len(tilesets) > 0 && (tilesets[0].MaxZ != tileset.MaxZ || tilesets[0].MinZ != tileset.MinZ) {
+		if len(tilesets) > 0 && (target.MaxZ != tileset.MaxZ || target.MinZ != tileset.MinZ) {
 			errors = append(errors, fmt.Errorf("zoom level mismatch for target and source %s", path))
-			continue
+			if !bestEffort {
+				continue
+			}
 		}
 		tilesets = append(tilesets, tileset)
 	}
