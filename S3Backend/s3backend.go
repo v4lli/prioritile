@@ -3,10 +3,11 @@ package S3Backend
 import (
 	"bytes"
 	"context"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"os"
 	"strings"
+
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type S3Backend struct {
@@ -20,7 +21,7 @@ func NewS3Backend(path string) (*S3Backend, error) {
 
 	minioClient, err := minio.New(pathComponents[0], &minio.Options{
 		Creds:  credentials.NewStaticV4(os.Getenv(pathComponents[0]+"_ACCESS_KEY_ID"), os.Getenv(pathComponents[0]+"_SECRET_ACCESS_KEY"), ""),
-		Secure: true,
+		Secure: false,
 	})
 
 	if err != nil {
