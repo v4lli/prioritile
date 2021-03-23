@@ -66,9 +66,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "- Resolution of corresponding tiles matches")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "S3 disk backends are supported as source and target by prefixing the tile")
-		fmt.Fprintln(os.Stderr, "directories with 's3://', e.g. 's3://example.com/source/'.")
-		fmt.Fprintln(os.Stderr, "S3 authentication information is read from environment variables prefixed with the target hostname:")
-		fmt.Fprintln(os.Stderr, "example.com_ACCESS_KEY_ID, example.com_SECRET_ACCESS_KEY")
+		fmt.Fprintln(os.Stderr, "directories with 's3://', e.g. 's3://example.com/foobucket/'.")
+		fmt.Fprintln(os.Stderr, "S3 authentication information is read from environment variables prefixed with the target hostname and bucketname:")
+		fmt.Fprintln(os.Stderr, "example.com_foobucket_ACCESS_KEY_ID, example.com_foobucket_SECRET_ACCESS_KEY")
 		fmt.Fprintln(os.Stderr, "")
 		flag.PrintDefaults()
 	}

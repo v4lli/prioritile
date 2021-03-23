@@ -19,8 +19,10 @@ type S3Backend struct {
 func NewS3Backend(path string, insecure bool) (*S3Backend, error) {
 	pathComponents := strings.Split(path[5:], "/")
 
+	accessKey := os.Getenv(pathComponents[0] + "_" + pathComponents[1] + "_ACCESS_KEY_ID")
+	secretKey := os.Getenv(pathComponents[0] + "_" + pathComponents[1] + "_SECRET_ACCESS_KEY")
 	minioClient, err := minio.New(pathComponents[0], &minio.Options{
-		Creds:  credentials.NewStaticV4(os.Getenv(pathComponents[0]+"_ACCESS_KEY_ID"), os.Getenv(pathComponents[0]+"_SECRET_ACCESS_KEY"), ""),
+		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: !insecure,
 	})
 
