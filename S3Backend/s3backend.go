@@ -16,12 +16,12 @@ type S3Backend struct {
 	BasePath string
 }
 
-func NewS3Backend(path string) (*S3Backend, error) {
+func NewS3Backend(path string, insecure bool) (*S3Backend, error) {
 	pathComponents := strings.Split(path[5:], "/")
 
 	minioClient, err := minio.New(pathComponents[0], &minio.Options{
 		Creds:  credentials.NewStaticV4(os.Getenv(pathComponents[0]+"_ACCESS_KEY_ID"), os.Getenv(pathComponents[0]+"_SECRET_ACCESS_KEY"), ""),
-		Secure: false,
+		Secure: !insecure,
 	})
 
 	if err != nil {
