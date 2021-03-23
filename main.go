@@ -111,7 +111,7 @@ func main() {
 		}
 	}
 
-	sources, errs := discoverTilesets(flag.Args()[1:], target.MinZ, target.MaxZ)
+	sources, errs := discoverTilesets(flag.Args()[1:], target, *bestEffort)
 	if errs != nil && !*bestEffort {
 		log.Fatalf("could not discover tilesets: %v", errs)
 	}
