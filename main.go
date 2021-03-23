@@ -42,6 +42,8 @@ func atomicAverage(target *int64, channel *chan time.Duration) {
 	}
 }
 
+var insecure bool
+
 func main() {
 	numWorkers := flag.Int("parallel", 2, "Number of parallel threads to use for processing")
 	quiet := flag.Bool("quiet", false, "Don't output progress information")
@@ -49,6 +51,7 @@ func main() {
 	report := flag.Bool("report", false, "Enable periodic reports (every min); intended for non-interactive environments")
 	bestEffort := flag.Bool("best-effort", false, "Best-effort merging: ignore erroneous tilesets completely and silently skip single failed tiles.")
 	zoom := flag.String("zoom", "", "Restrict/manually set zoom levels to work on, in the form of 'minZ-maxZ' (e.g. '1-8'). If this option is specified, prioritile does not try to automatically detect the zoom levels of the target but rather uses these hardcoded ones.")
+	insecure = *flag.Bool("insecure", false, "Do not use https for remote sources/target")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: prioritile [-zoom '1-8'] [-debug] [-report] [-best-effort] [-parallel=2] /tiles/target/ /tiles/source1/ [s3://foo/tiles/source2/ [...]]")
 		fmt.Fprintln(os.Stderr, "")
@@ -63,9 +66,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "- Resolution of corresponding tiles matches")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "S3 disk backends are supported as source and target by prefixing the tile")
-		fmt.Fprintln(os.Stderr, "directories with 's3://', e.g. 's3://example.com/source/'.")
-		fmt.Fprintln(os.Stderr, "S3 authentication information is read from environment variables prefixed with the target hostname:")
-		fmt.Fprintln(os.Stderr, "example.com_ACCESS_KEY_ID, example.com_SECRET_ACCESS_KEY")
+		fmt.Fprintln(os.Stderr, "directories with 's3://', e.g. 's3://example.com/foobucket/'.")
+		fmt.Fprintln(os.Stderr, "S3 authentication information is read from environment variables prefixed with the target hostname and bucketname:")
+		fmt.Fprintln(os.Stderr, "example.com_foobucket_ACCESS_KEY_ID, example.com_foobucket_SECRET_ACCESS_KEY")
 		fmt.Fprintln(os.Stderr, "")
 		flag.PrintDefaults()
 	}
@@ -111,7 +114,7 @@ func main() {
 		}
 	}
 
-	sources, errs := discoverTilesets(flag.Args()[1:], target.MinZ, target.MaxZ)
+	sources, errs := discoverTilesets(flag.Args()[1:], target, *bestEffort)
 	if errs != nil && !*bestEffort {
 		log.Fatalf("could not discover tilesets: %v", errs)
 	}
@@ -312,7 +315,7 @@ func main() {
 
 func stringToBackend(pathSpec string) (StorageBackend, error) {
 	if strings.HasPrefix(pathSpec, "s3://") {
-		backend, err := S3Backend.NewS3Backend(pathSpec)
+		backend, err := S3Backend.NewS3Backend(pathSpec, insecure)
 		if err != nil {
 			return nil, err
 		}
