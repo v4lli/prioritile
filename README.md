@@ -84,3 +84,8 @@ example.com_ACCESS_KEY_ID, example.com_SECRET_ACCESS_KEY
 - https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames
 - https://github.com/chrislusf/seaweedfs
 - https://gdal.org/programs/gdal2tiles.html
+
+## Credits etc
+
+- Example datasets, including the screenshot above, are courtesy of the ESA/EC Copernicus Programme (Contains Modified Copernicus Sentinel data, 2020/2021)
+- [Code is MIT](https://github.com/v4lli/prioritile/blob/master/LICENSE) - contributions welcome 😊
