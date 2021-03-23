@@ -45,6 +45,42 @@ COPY --from=ghcr.io/v4lli/prioritile:latest /app/prioritile /bin/
 
 ## Usage
 
-All source directives are overlayed in the z-order specified on the command line. The first path specification is the base layer (and the output). See the 
+All source directives are overlayed in the z-order specified on the command line. The first path specification is the base layer (and the output).
 
-```prioritile [-q] [-best-effort] [-parallel=4] /tiles/target/ /tiles/source1/ [s3://foo/tiles/source2/ [...]]```
+```
+Usage: prioritile [-zoom '1-8'] [-debug] [-report] [-best-effort] [-parallel=2] /tiles/target/ /tiles/source1/ [s3://foo/tiles/source2/ [...]]
+
+prioritile applies a painter-type algorithm to the first tiles location specified
+on the commandline in an efficient way by leveraging the XYZ (and WMTS) directory
+structure. All trailing tile source directives will be used by the algorithm, in the
+z-order specified. At least two (one base tileset + one overlay) source directives
+are required. The zoom levels of all files must be the same.
+Some assumptions about the source directories:
+- Tiles are RGBA PNGs
+- NODATA is represented by 100% alpha
+- Resolution of corresponding tiles matches
+
+S3 disk backends are supported as source and target by prefixing the tile
+directories with 's3://', e.g. 's3://example.com/source/'.
+S3 authentication information is read from environment variables prefixed with the target hostname:
+example.com_ACCESS_KEY_ID, example.com_SECRET_ACCESS_KEY
+
+  -best-effort
+    	Best-effort merging: ignore erroneous tilesets completely and silently skip single failed tiles.
+  -debug
+    	Enable debugging (tracing and some perf counters)
+  -parallel int
+    	Number of parallel threads to use for processing (default 2)
+  -quiet
+    	Don't output progress information
+  -report
+    	Enable periodic reports (every min); intended for non-interactive environments
+  -zoom string
+    	Restrict/manually set zoom levels to work on, in the form of 'minZ-maxZ' (e.g. '1-8'). If this option is specified, prioritile does not try to automatically detect the zoom levels of the target but rather uses these hardcoded ones.
+```
+
+## Further Reading
+
+- https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames
+- https://github.com/chrislusf/seaweedfs
+- https://gdal.org/programs/gdal2tiles.html

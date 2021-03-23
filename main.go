@@ -50,7 +50,7 @@ func main() {
 	bestEffort := flag.Bool("best-effort", false, "Best-effort merging: ignore erroneous tilesets completely and silently skip single failed tiles.")
 	zoom := flag.String("zoom", "", "Restrict/manually set zoom levels to work on, in the form of 'minZ-maxZ' (e.g. '1-8'). If this option is specified, prioritile does not try to automatically detect the zoom levels of the target but rather uses these hardcoded ones.")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: prioritile [-zoom '1-8'] [-debug] [-report] [-best-effort] [-parallel=2] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
+		fmt.Fprintln(os.Stderr, "Usage: prioritile [-zoom '1-8'] [-debug] [-report] [-best-effort] [-parallel=2] /tiles/target/ /tiles/source1/ [s3://foo/tiles/source2/ [...]]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "prioritile applies a painter-type algorithm to the first tiles location specified")
 		fmt.Fprintln(os.Stderr, "on the commandline in an efficient way by leveraging the XYZ (and WMTS) directory ")
