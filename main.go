@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	atomic "sync/atomic"
@@ -42,15 +43,14 @@ func atomicAverage(target *int64, channel *chan time.Duration) {
 }
 
 func main() {
-	numWorkers := flag.Int("parallel", 1, "Number of parallel threads to use for processing")
+	numWorkers := flag.Int("parallel", 2, "Number of parallel threads to use for processing")
 	quiet := flag.Bool("quiet", false, "Don't output progress information")
 	debug := flag.Bool("debug", false, "Enable debugging (tracing and some perf counters)")
-	report := flag.Bool("report", false, "Enable periodic reports (every min)")
-	bestEffort := flag.Bool("best-effort", false, "Best-effort merging: ignore erroneous tilesets completely and skip single failed tiles.")
-	minZ := flag.Int("minZ", -1, "Min zoom level to merge into target")
-	maxZ := flag.Int("maxZ", -1, "Max zoom level to merge into target")
+	report := flag.Bool("report", false, "Enable periodic reports (every min); intended for non-interactive environments")
+	bestEffort := flag.Bool("best-effort", false, "Best-effort merging: ignore erroneous tilesets completely and silently skip single failed tiles.")
+	zoom := flag.String("zoom", "", "Restrict/manually set zoom levels to work on, in the form of 'minZ-maxZ' (e.g. '1-8'). If this option is specified, prioritile does not try to automatically detect the zoom levels of the target but rather uses these hardcoded ones.")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: prioritile [-debug] [-report] [-best-effort] [-parallel=4] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
+		fmt.Fprintln(os.Stderr, "Usage: prioritile [-zoom '1-8'] [-debug] [-report] [-best-effort] [-parallel=2] /tiles/target/ /tiles/source1/ [/tiles/source2/ [...]]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "prioritile applies a painter-type algorithm to the first tiles location specified")
 		fmt.Fprintln(os.Stderr, "on the commandline in an efficient way by leveraging the XYZ (and WMTS) directory ")
@@ -64,8 +64,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "S3 disk backends are supported as source and target by prefixing the tile")
 		fmt.Fprintln(os.Stderr, "directories with 's3://', e.g. 's3://example.com/source/'.")
-		fmt.Fprintln(os.Stderr, "S3 authentication information is read from environment variables:")
-		fmt.Fprintln(os.Stderr, "AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY")
+		fmt.Fprintln(os.Stderr, "S3 authentication information is read from environment variables prefixed with the target hostname:")
+		fmt.Fprintln(os.Stderr, "example.com_ACCESS_KEY_ID, example.com_SECRET_ACCESS_KEY")
 		fmt.Fprintln(os.Stderr, "")
 		flag.PrintDefaults()
 	}
@@ -86,10 +86,22 @@ func main() {
 	}
 
 	var target TilesetDescriptor
-	if *minZ != -1 || *maxZ != -1 {
+	if len(*zoom) > 0 {
+		parts := strings.Split(*zoom, "-")
+		minZ, err := strconv.Atoi(parts[0])
+		if err != nil {
+			log.Fatal(err)
+		}
+		maxZ, err := strconv.Atoi(parts[1])
+		if err != nil {
+			log.Fatal(err)
+		}
+		if len(parts) != 2 {
+			log.Fatal("Zoom needs to be specified with minZ-maxZ, e.g. 1-8")
+		}
 		target = TilesetDescriptor{
-			MinZ:    *minZ,
-			MaxZ:    *maxZ,
+			MinZ:    minZ,
+			MaxZ:    maxZ,
 			Backend: targetBackend,
 		}
 	} else {
