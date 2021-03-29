@@ -48,7 +48,7 @@ COPY --from=ghcr.io/v4lli/prioritile:latest /app/prioritile /bin/
 All source directives are overlayed in the z-order specified on the command line. The first path specification is the base layer (and the output).
 
 ```
-Usage: prioritile [-zoom '1-8'] [-debug] [-report] [-best-effort] [-parallel=2] /tiles/target/ /tiles/source1/ [s3://foo/tiles/source2/ [...]]
+Usage: prioritile [-zoom '1-8'] [-debug] [-report] [-best-effort] [-parallel=2] /tiles/target/ /tiles/source1/ [https://foo.com/tiles/source2/ [...]]
 
 prioritile applies a painter-type algorithm to the first tiles location specified
 on the commandline in an efficient way by leveraging the XYZ (and WMTS) directory
@@ -60,10 +60,9 @@ Some assumptions about the source directories:
 - NODATA is represented by 100% alpha
 - Resolution of corresponding tiles matches
 
-S3 disk backends are supported as source and target by prefixing the tile
-directories with 's3://', e.g. 's3://example.com/source/'.
+S3 disk backends are supported as source and target, e.g. 'https://example.com[:port]/foobucket/'.
 S3 authentication information is read from environment variables prefixed with the target hostname:
-example.com_ACCESS_KEY_ID, example.com_SECRET_ACCESS_KEY
+example.com[:port]_ACCESS_KEY_ID, example.com[:port]_SECRET_ACCESS_KEY
 
   -best-effort
     	Best-effort merging: ignore erroneous tilesets completely and silently skip single failed tiles.
