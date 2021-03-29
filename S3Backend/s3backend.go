@@ -3,6 +3,8 @@ package S3Backend
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -16,12 +18,29 @@ type S3Backend struct {
 	BasePath string
 }
 
-func NewS3Backend(path string, insecure bool) (*S3Backend, error) {
-	pathComponents := strings.Split(path[5:], "/")
+func NewS3Backend(path string) (*S3Backend, error) {
+	url_parsed, err := url.Parse(path)
+	if err != nil {
+		return nil, err
+	}
+	var insecure bool
+	if url_parsed.Scheme == "http" {
+		insecure = false
+	} else if url_parsed.Scheme == "https" {
+		insecure = true
+	} else {
+		return nil, fmt.Errorf("invalid scheme: %s. valid schemes are: http, https", url_parsed.Scheme)
+	}
+	host := url_parsed.Host
+	pathComponents := strings.Split(url_parsed.Path, "/")
+	if len(pathComponents) == 1 {
+		return nil, fmt.Errorf("Invalid path (maybe you forgot add the bucket name to the url?)")
+	}
+	bucket := pathComponents[1]
 
-	accessKey := os.Getenv(pathComponents[0] + "_" + pathComponents[1] + "_ACCESS_KEY_ID")
-	secretKey := os.Getenv(pathComponents[0] + "_" + pathComponents[1] + "_SECRET_ACCESS_KEY")
-	minioClient, err := minio.New(pathComponents[0], &minio.Options{
+	accessKey := os.Getenv(host + "_" + bucket + "_ACCESS_KEY_ID")
+	secretKey := os.Getenv(host + "_" + bucket + "_SECRET_ACCESS_KEY")
+	minioClient, err := minio.New(host, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: !insecure,
 	})
@@ -32,8 +51,8 @@ func NewS3Backend(path string, insecure bool) (*S3Backend, error) {
 
 	return &S3Backend{
 		Client:   minioClient,
-		Bucket:   pathComponents[1],
-		BasePath: strings.Join(pathComponents[2:], "/"),
+		Bucket:   bucket,
+		BasePath: strings.Join(pathComponents[1:], "/"),
 	}, nil
 }
 
