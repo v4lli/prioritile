@@ -22,7 +22,7 @@ func discoverTilesets(paths []string, target TilesetDescriptor, bestEffort bool)
 	var errors []error
 
 	for _, path := range paths {
-		backend, err := stringToBackend(path)
+		backend, err := stringToBackend(path, true)
 		if err != nil {
 			errors = append(errors, err)
 			continue

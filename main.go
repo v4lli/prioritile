@@ -79,7 +79,7 @@ func main() {
 		log.Println("Discovering tilesets...")
 	}
 
-	targetBackend, err := stringToBackend(flag.Args()[0])
+	targetBackend, err := stringToBackend(flag.Args()[0], false)
 	if err != nil {
 		log.Fatalf("problem with backend: %s", err)
 	}
@@ -106,7 +106,7 @@ func main() {
 	} else {
 		target, err = discoverTileset(targetBackend, -1, -1)
 		if err != nil && !*bestEffort {
-			log.Fatalf("could not discover target tileset: %v", err)
+			log.Fatalf("could not discover target tileset: %v. Use -zoom flags to specify target range.", err)
 		}
 	}
 
@@ -309,7 +309,7 @@ func main() {
 	}
 }
 
-func stringToBackend(pathSpec string) (StorageBackend, error) {
+func stringToBackend(pathSpec string, failNonexistent bool) (StorageBackend, error) {
 	if strings.HasPrefix(pathSpec, "http") {
 		backend, err := S3Backend.NewS3Backend(pathSpec)
 		if err != nil {
@@ -321,7 +321,15 @@ func stringToBackend(pathSpec string) (StorageBackend, error) {
 	// Default: local filesystem.
 	_, err := os.Stat(pathSpec)
 	if os.IsNotExist(err) {
-		return nil, err
+		if failNonexistent {
+			return nil, err
+		} else {
+			log.Printf("Creating empty directory: %s", pathSpec)
+			err := os.MkdirAll(pathSpec, os.ModePerm)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	return &FsBackend.FsBackend{BasePath: pathSpec}, nil
 }
