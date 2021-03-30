@@ -23,11 +23,11 @@ func NewS3Backend(path string) (*S3Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	var insecure bool
+	var secure bool
 	if url_parsed.Scheme == "http" {
-		insecure = false
+		secure = false
 	} else if url_parsed.Scheme == "https" {
-		insecure = true
+		secure = true
 	} else {
 		return nil, fmt.Errorf("invalid scheme: %s. valid schemes are: http, https", url_parsed.Scheme)
 	}
@@ -42,7 +42,7 @@ func NewS3Backend(path string) (*S3Backend, error) {
 	secretKey := os.Getenv(host + "_" + bucket + "_SECRET_ACCESS_KEY")
 	minioClient, err := minio.New(host, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: !insecure,
+		Secure: secure,
 	})
 
 	if err != nil {
@@ -52,7 +52,7 @@ func NewS3Backend(path string) (*S3Backend, error) {
 	return &S3Backend{
 		Client:   minioClient,
 		Bucket:   bucket,
-		BasePath: strings.Join(pathComponents[1:], "/"),
+		BasePath: strings.Join(pathComponents[2:], "/"),
 	}, nil
 }
 
