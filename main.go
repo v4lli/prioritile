@@ -193,6 +193,7 @@ func main() {
 							log.Println(err)
 							continue
 						} else {
+							log.Println("Failed to get " + job.tile.String())
 							log.Fatal(err)
 						}
 					}
@@ -202,6 +203,7 @@ func main() {
 							log.Println(err)
 							continue
 						} else {
+							log.Println("Failed to decode " + job.tile.String())
 							log.Fatal(err)
 						}
 					}
@@ -230,6 +232,7 @@ func main() {
 								log.Println(err)
 								continue
 							} else {
+								log.Println("Failed to decode " + job.tile.String())
 								log.Fatal(err)
 							}
 						}
@@ -258,6 +261,7 @@ func main() {
 						log.Println(err)
 						continue
 					} else {
+						log.Println("Failed to encode " + job.tile.String())
 						log.Fatal(err)
 					}
 				}
@@ -266,6 +270,7 @@ func main() {
 						log.Println(err)
 						continue
 					} else {
+						log.Println("Failed to upload " + job.tile.String())
 						log.Fatal(err)
 					}
 				}
