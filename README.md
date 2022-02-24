@@ -40,7 +40,7 @@ which is updated automatically through Github Actions. Use this in
 your `Dockerfile`:
 
 ```
-COPY --from=ghcr.io/v4lli/prioritile:latest /app/prioritile /bin/
+COPY --from=ghcr.io/v4lli/prioritile:latest /go/src/prioritile/prioritile /bin/
 ```
 
 ## Usage
