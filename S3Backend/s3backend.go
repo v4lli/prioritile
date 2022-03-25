@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -40,9 +41,15 @@ func NewS3Backend(path string) (*S3Backend, error) {
 
 	accessKey := os.Getenv(host + "_" + bucket + "_ACCESS_KEY_ID")
 	secretKey := os.Getenv(host + "_" + bucket + "_SECRET_ACCESS_KEY")
+	transport, err := minio.DefaultTransport(secure)
+	if err != nil {
+		return nil, err
+	}
+	transport.ResponseHeaderTimeout = 60 * time.Second
 	minioClient, err := minio.New(host, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: secure,
+		Creds:     credentials.NewStaticV4(accessKey, secretKey, ""),
+		Secure:    secure,
+		Transport: transport,
 	})
 
 	if err != nil {
