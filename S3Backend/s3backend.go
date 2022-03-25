@@ -19,7 +19,7 @@ type S3Backend struct {
 	BasePath string
 }
 
-func NewS3Backend(path string) (*S3Backend, error) {
+func NewS3Backend(path string, timeout int) (*S3Backend, error) {
 	url_parsed, err := url.Parse(path)
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func NewS3Backend(path string) (*S3Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	transport.ResponseHeaderTimeout = 60 * time.Second
+	transport.ResponseHeaderTimeout = time.Duration(timeout) * time.Second
 	minioClient, err := minio.New(host, &minio.Options{
 		Creds:     credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure:    secure,

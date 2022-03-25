@@ -17,12 +17,12 @@ func (t TilesetDescriptor) String() string {
 	return fmt.Sprintf("%d-%d", t.MaxZ, t.MinZ)
 }
 
-func discoverTilesets(paths []string, target TilesetDescriptor, bestEffort bool) ([]TilesetDescriptor, []error) {
+func discoverTilesets(paths []string, target TilesetDescriptor, bestEffort bool, timeout int) ([]TilesetDescriptor, []error) {
 	var tilesets []TilesetDescriptor
 	var errors []error
 
 	for _, path := range paths {
-		backend, err := stringToBackend(path, true)
+		backend, err := stringToBackend(path, true, timeout)
 		if err != nil {
 			errors = append(errors, err)
 			continue
