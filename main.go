@@ -49,8 +49,9 @@ func main() {
 	report := flag.Bool("report", false, "Enable periodic reports (every min); intended for non-interactive environments")
 	bestEffort := flag.Bool("best-effort", false, "Best-effort merging: ignore erroneous tilesets completely and silently skip single failed tiles.")
 	zoom := flag.String("zoom", "", "Restrict/manually set zoom levels to work on, in the form of 'minZ-maxZ' (e.g. '1-8'). If this option is specified, prioritile does not try to automatically detect the zoom levels of the target but rather uses these hardcoded ones.")
+	timeout := flag.Int("timeout", 60, "Configure the timeout for S3 disk backend operations (timeout in seconds)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: prioritile [-zoom '1-8'] [-debug] [-report] [-best-effort] [-parallel=2] /tiles/target/ /tiles/source1/ [https://foo.com/tiles/source2/ [...]]")
+		fmt.Fprintln(os.Stderr, "Usage: prioritile [-zoom '1-8'] [-debug] [-report] [-best-effort] [-parallel=2] [-timeout=60] /tiles/target/ /tiles/source1/ [https://foo.com/tiles/source2/ [...]]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "prioritile applies a painter-type algorithm to the first tiles location specified")
 		fmt.Fprintln(os.Stderr, "on the commandline in an efficient way by leveraging the XYZ (and WMTS) directory ")
@@ -79,7 +80,7 @@ func main() {
 		log.Println("Discovering tilesets...")
 	}
 
-	targetBackend, err := stringToBackend(flag.Args()[0], false)
+	targetBackend, err := stringToBackend(flag.Args()[0], false, *timeout)
 	if err != nil {
 		log.Fatalf("problem with backend: %s", err)
 	}
@@ -110,7 +111,7 @@ func main() {
 		}
 	}
 
-	sources, errs := discoverTilesets(flag.Args()[1:], target, *bestEffort)
+	sources, errs := discoverTilesets(flag.Args()[1:], target, *bestEffort, *timeout)
 	if errs != nil && !*bestEffort {
 		log.Fatalf("could not discover tilesets: %v", errs)
 	}
@@ -314,9 +315,9 @@ func main() {
 	}
 }
 
-func stringToBackend(pathSpec string, failNonexistent bool) (StorageBackend, error) {
+func stringToBackend(pathSpec string, failNonexistent bool, timeout int) (StorageBackend, error) {
 	if strings.HasPrefix(pathSpec, "http") {
-		backend, err := S3Backend.NewS3Backend(pathSpec)
+		backend, err := S3Backend.NewS3Backend(pathSpec, timeout)
 		if err != nil {
 			return nil, err
 		}
