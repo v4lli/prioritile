@@ -23,6 +23,7 @@ import (
 type StorageBackend interface {
 	GetDirectories(dirname string) ([]string, error)
 	GetFiles(dirname string) ([]string, error)
+	GetFilesRecursive(dirname string) ([]string, error)
 	MkdirAll(dirname string) error
 	GetFile(filename string) ([]byte, error)
 	PutFile(filename string, content *bytes.Buffer) error

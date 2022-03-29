@@ -2,6 +2,7 @@ package FsBackend
 
 import (
 	"bytes"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -64,6 +65,25 @@ func (b *FsBackend) GetFiles(dirname string) ([]string, error) {
 		if !file.IsDir() {
 			results = append(results, files[idx].Name())
 		}
+	}
+	return results, nil
+}
+
+func (b *FsBackend) GetFilesRecursive(dirname string) ([]string, error) {
+	var results []string
+
+	err := filepath.Walk(filepath.Join(b.BasePath, dirname), func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			info.Name()
+			results = append(results, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return results, nil
 }
