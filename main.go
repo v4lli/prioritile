@@ -128,16 +128,7 @@ func main() {
 		if !*quiet {
 			indexingBar.Add(1)
 		}
-		tiles, err := discoverTiles(tileset)
-		if err != nil {
-			if *bestEffort {
-				log.Println(err)
-				continue
-			} else {
-				log.Fatal(err)
-			}
-		}
-		for _, tile := range tiles {
+		for _, tile := range tileset.GetTiles() {
 			if have, ok := tilesDb[tile.String()]; ok {
 				tilesDb[tile.String()] = append(have, &sources[idx])
 			} else {
