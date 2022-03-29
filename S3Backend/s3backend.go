@@ -127,6 +127,22 @@ func (s *S3Backend) GetFiles(dirname string) ([]string, error) {
 	return result, nil
 }
 
+func (s *S3Backend) GetFilesRecursive(dirname string) ([]string, error) {
+	prefix := s.BasePath + dirname
+	var result []string
+	for object := range s.Client.ListObjects(context.Background(),
+		s.Bucket,
+		minio.ListObjectsOptions{Prefix: prefix, Recursive: true},
+	) {
+		if object.Err != nil {
+			return nil, object.Err
+		}
+		// Process all files
+		result = append(result, object.Key[len(prefix):])
+	}
+	return result, nil
+}
+
 func (s *S3Backend) MkdirAll(dirname string) error {
 	// I think this is not necessary on S3
 	return nil
