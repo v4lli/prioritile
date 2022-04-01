@@ -25,7 +25,7 @@ func (t TilesetDescriptor) GetTiles() []TileDescriptor {
 	sort.Ints(keys)
 	// Extract all tiles to a sorted slice
 	var result []TileDescriptor
-	for k := range keys {
+	for _, k := range keys {
 		tileset := t.Tiles[k]
 		for _, s := range tileset {
 			result = append(result, s)
